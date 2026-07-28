@@ -1,0 +1,60 @@
+# Demo configuration — works with the fake database from
+# `python3 tools/make_demo_data.py`. No hardware required.
+#
+#     python3 tools/make_demo_data.py --db demo.db --days 7
+#     python3 -m ecm1240.api --config config.demo.yaml
+#     open http://127.0.0.1:8080/
+
+site:
+  name: "Demo House"
+  rate_per_kwh: 0.15
+  currency_symbol: "$"
+  timezone: "America/New_York"
+
+database:
+  path: "demo.db"
+
+api:
+  bind: "127.0.0.1"
+  port: 8080
+  allowed_origin: ""
+
+collector:
+  flush_interval: 30
+  live_feed_port: 0
+
+meters:
+  - unit: 0
+    port: "demo://no-hardware"      # never opened; the demo reads the database
+    channels:
+      ch1:  { name: "Mains",        volts: 240, role: "mains" }
+      ch2:  { name: "Pump",         volts: 240 }
+      aux1: { name: "Air Handler",  volts: 240 }
+      aux2: { name: "Workshop",     volts: 120 }
+      aux3: { name: "Refrigerator", volts: 120 }
+      aux4: { name: "Lighting",     volts: 120 }
+      aux5: { name: "Equipment",    volts: 120 }
+
+  - unit: 1
+    port: "demo://no-hardware-2"
+    channels:
+      ch1:  { name: "Range",        volts: 240 }
+      ch2:  { name: "Water Heater", volts: 240 }
+      aux1: { name: "Laundry",      volts: 240 }
+      aux2: { name: "Outlets A",    volts: 120 }
+      aux3: { name: "Outlets B",    volts: 120 }
+      aux4: { name: "Study",        volts: 120 }
+      aux5: { name: "Media",        volts: 120 }
+
+unmetered:
+  max_watts: 20000
+  label: "Unmetered"
+
+guards:
+  max_plausible_watts: 50000
+  min_interval_s: 2
+  rebase_after_s: 120
+  coherence_k: 1.3
+
+insights:
+  profiles: "profiles.demo.yaml"

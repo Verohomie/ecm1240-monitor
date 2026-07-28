@@ -1,0 +1,4 @@
+# Runtime dependencies. Everything else is the Python standard library.
+pyserial>=3.4      # BSD-3-Clause — reading the meters over serial
+Flask>=2.0         # BSD-3-Clause — the read-only JSON API
+PyYAML>=5.4        # MIT        — reading config.yaml

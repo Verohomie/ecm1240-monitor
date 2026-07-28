@@ -1,0 +1,9 @@
+[Unit]
+Description=ECM-1240 appliance-health insights pass
+
+[Service]
+Type=oneshot
+User=ecm
+WorkingDirectory=/opt/ecm1240
+Environment=ECM1240_CONFIG=/etc/ecm1240/config.yaml
+ExecStart=/opt/ecm1240/.venv/bin/python -m ecm1240.insights

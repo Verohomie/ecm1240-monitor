@@ -1,0 +1,151 @@
+# ── Appliance profiles ───────────────────────────────────────────
+#
+# GENERATED from your own recorded data by tools/suggest_profiles.py
+# 2026-07-28 13:26 — review before relying on it.
+#
+# The names come from your config; the numbers come from the data.
+# Nothing here knows what your appliances ARE — only how they behave.
+# Fix anything that looks wrong, and delete circuits you don't care
+# about. Thresholds are watts; min_dur and short_run_s are seconds.
+#
+#   cycling     switches on/off all day (compressor-like)
+#   multistate  several legitimate running levels
+#   burst       human-driven; being idle is normal
+#   always_on   should hold a steady floor
+
+profiles:
+  - unit: 0
+    ch: ch2
+    name: "Pump"
+    kind: burst
+    on: 507
+    off: 193
+    min_dur: 120
+    long_run_h: 6.0
+
+  - unit: 0
+    ch: aux1
+    name: "Air Handler"
+    kind: cycling
+    on: 1891
+    off: 699
+    min_dur: 120
+    short_run_s: 300
+    starts_per_h: 4
+    long_run_h: 6.0
+    duty: true
+    duty_high: 65
+
+  - unit: 0
+    ch: aux2
+    name: "Workshop"
+    kind: cycling
+    on: 81
+    off: 58
+    min_dur: 120
+    short_run_s: 300
+    starts_per_h: 4
+    long_run_h: 6.0
+    duty: true
+    duty_high: 65
+
+  - unit: 0
+    ch: aux3
+    name: "Refrigerator"
+    kind: cycling
+    on: 114
+    off: 51
+    min_dur: 120
+    short_run_s: 300
+    starts_per_h: 4
+    long_run_h: 6.0
+    duty: true
+    duty_high: 65
+
+  - unit: 0
+    ch: aux4
+    name: "Lighting"
+    kind: cycling
+    on: 63
+    off: 45
+    min_dur: 120
+    short_run_s: 300
+    starts_per_h: 4
+    long_run_h: 6.0
+    duty: true
+    duty_high: 65
+
+  - unit: 1
+    ch: ch1
+    name: "Range"
+    kind: cycling
+    on: 652
+    off: 436
+    min_dur: 120
+    short_run_s: 300
+    starts_per_h: 4
+    long_run_h: 6.0
+    duty: true
+    duty_high: 65
+
+  - unit: 1
+    ch: ch2
+    name: "Water Heater"
+    kind: burst
+    on: 3041
+    off: 1068
+    min_dur: 120
+    long_run_h: 6.0
+
+  - unit: 1
+    ch: aux1
+    name: "Laundry"
+    kind: cycling
+    on: 528
+    off: 353
+    min_dur: 120
+    short_run_s: 300
+    starts_per_h: 4
+    long_run_h: 6.0
+    duty: true
+    duty_high: 65
+
+  - unit: 1
+    ch: aux2
+    name: "Outlets A"
+    kind: cycling
+    on: 112
+    off: 85
+    min_dur: 120
+    short_run_s: 300
+    starts_per_h: 4
+    long_run_h: 6.0
+    duty: true
+    duty_high: 65
+
+  - unit: 1
+    ch: aux3
+    name: "Outlets B"
+    kind: cycling
+    on: 69
+    off: 55
+    min_dur: 120
+    short_run_s: 300
+    starts_per_h: 4
+    long_run_h: 6.0
+    duty: true
+    duty_high: 65
+
+  - unit: 1
+    ch: aux5
+    name: "Media"
+    kind: cycling
+    on: 79
+    off: 65
+    min_dur: 120
+    short_run_s: 300
+    starts_per_h: 4
+    long_run_h: 6.0
+    duty: true
+    duty_high: 65
+

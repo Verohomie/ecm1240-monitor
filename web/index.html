@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Energy Monitor</title>
+<style>
+/* The circuit list, site name and rate all come from /api/config — nothing
+   about any particular house is hardcoded in this file. */
+:root {
+  --bg: #0f1720; --panel: #17212b; --panel2: #1e2b38; --line: #2c3d4d;
+  --fg: #e8eef4; --dim: #9fb2c4; --accent: #4ea8de; --ok: #4cc38a;
+  --warn: #e8a33d; --alert: #e5624a; --pending: #6b7f92;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #eef2f6; --panel: #fff; --panel2: #f4f7fa; --line: #d3dde6;
+    --fg: #16222e; --dim: #5a6b7c; --accent: #1a6fa8; --ok: #1f8f5f;
+    --warn: #b26a00; --alert: #c0392b; --pending: #8496a6;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  padding-bottom: 40px; -webkit-text-size-adjust: 100%;
+}
+header {
+  background: var(--panel); border-bottom: 1px solid var(--line);
+  padding: 18px 20px; position: sticky; top: 0; z-index: 10;
+}
+h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.2px; }
+.sub { font-size: 14px; color: var(--dim); margin-top: 3px; }
+.wrap { max-width: 1000px; margin: 0 auto; padding: 0 16px; }
+.hero {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 22px; margin: 18px 0; text-align: center;
+}
+.hero .big { font-size: 46px; font-weight: 700; letter-spacing: -1px; }
+.hero .lbl { font-size: 15px; color: var(--dim); text-transform: uppercase;
+             letter-spacing: 1px; }
+.hero .cost { font-size: 16px; color: var(--dim); margin-top: 8px; }
+h2 { font-size: 16px; margin: 26px 0 12px; color: var(--dim);
+     text-transform: uppercase; letter-spacing: 1px; }
+.grid { display: grid; gap: 12px;
+        grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px; cursor: pointer; transition: border-color .15s;
+}
+.card:hover, .card:focus-visible { border-color: var(--accent); outline: none; }
+.card .name { font-size: 16px; font-weight: 600; }
+.card .w { font-size: 28px; font-weight: 700; margin: 4px 0 2px; }
+.card .meta { font-size: 14px; color: var(--dim); }
+.bar { height: 6px; background: var(--panel2); border-radius: 3px;
+       margin-top: 10px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent); }
+.card.hidden-ch { opacity: .55; }
+.tag { display: inline-block; font-size: 12px; padding: 2px 7px;
+       border-radius: 4px; background: var(--panel2); color: var(--dim);
+       margin-left: 6px; vertical-align: 2px; }
+.ins { background: var(--panel); border: 1px solid var(--line);
+       border-left: 4px solid var(--pending); border-radius: 8px;
+       padding: 13px 16px; margin-bottom: 10px; }
+.ins.ok { border-left-color: var(--ok); }
+.ins.watch { border-left-color: var(--warn); }
+.ins.alert { border-left-color: var(--alert); }
+.ins.info { border-left-color: var(--pending); }
+.ins .t { font-size: 16px; font-weight: 600; }
+.ins .d { font-size: 14px; color: var(--dim); margin-top: 4px;
+          white-space: pre-wrap; }
+dialog {
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 12px; padding: 0; width: min(92vw, 880px);
+}
+dialog::backdrop { background: rgba(0,0,0,.6); }
+.dh { display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.dh h3 { font-size: 18px; }
+.db { padding: 18px; }
+button {
+  font: inherit; font-size: 15px; background: var(--panel2); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 7px; padding: 8px 14px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button[aria-pressed="true"] { background: var(--accent); color: #fff;
+                              border-color: var(--accent); }
+.ranges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+svg { display: block; width: 100%; height: auto; }
+.err { background: var(--panel); border: 1px solid var(--alert);
+       border-radius: 10px; padding: 16px; color: var(--fg); font-size: 15px; }
+footer { text-align: center; color: var(--dim); font-size: 13px; margin-top: 34px; }
+code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
+       background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1 id="site">Energy Monitor</h1>
+    <div class="sub" id="status">connecting…</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div id="boot"></div>
+
+  <div class="hero" id="hero" hidden>
+    <div class="lbl" id="heroLbl">Whole House</div>
+    <div class="big" id="heroW">—</div>
+    <div class="cost" id="heroCost"></div>
+  </div>
+
+  <h2>Circuits</h2>
+  <div class="grid" id="grid"></div>
+
+  <h2 id="insH" hidden>Insights</h2>
+  <div id="ins"></div>
+
+  <footer>
+    ecm1240-monitor · data stays on this machine
+  </footer>
+</div>
+
+<dialog id="dlg">
+  <div class="dh">
+    <h3 id="dlgTitle">Circuit</h3>
+    <button onclick="document.getElementById('dlg').close()">Close</button>
+  </div>
+  <div class="db">
+    <div class="ranges" id="ranges"></div>
+    <div id="chart"></div>
+  </div>
+</dialog>
+
+<script>
+'use strict';
+
+const API = location.origin.startsWith('http') ? location.origin : 'http://127.0.0.1:8080';
+const RANGES = [
+  { label: '1 h',  minutes: 60,    points: 120 },
+  { label: '3 h',  minutes: 180,   points: 180 },
+  { label: '24 h', minutes: 1440,  points: 288 },
+  { label: '7 d',  minutes: 10080, points: 336 },
+  { label: '30 d', minutes: 43200, points: 720 },
+];
+
+let CFG = null;
+let LAST = {};          // unit -> latest reading row
+let openCh = null, openRange = 2;
+
+const $ = id => document.getElementById(id);
+const fmtW = w => w == null ? '—'
+  : (Math.abs(w) >= 1000 ? (w / 1000).toFixed(2) + ' kW' : Math.round(w) + ' W');
+
+async function get(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error(path + ' -> HTTP ' + r.status);
+  return r.json();
+}
+
+/* ── boot ────────────────────────────────────────────────────────────────── */
+async function boot() {
+  try {
+    CFG = await get('/api/config');
+  } catch (e) {
+    $('boot').innerHTML = `<div class="err"><b>Cannot reach the API.</b><br>
+      Start it with <code>python3 -m ecm1240.api</code>, then reload.<br>
+      <span style="color:var(--dim)">${e.message}</span></div>`;
+    $('status').textContent = 'offline';
+    return;
+  }
+  $('site').textContent = CFG.site_name || 'Energy Monitor';
+  document.title = (CFG.site_name || 'Energy') + ' — Energy Monitor';
+  if (!CFG.mains) $('heroLbl').textContent = 'Metered Total';
+  $('hero').hidden = false;
+  buildCards();
+  await tick();
+  setInterval(tick, 5000);
+  loadInsights();
+  setInterval(loadInsights, 300000);
+}
+
+function visible() { return (CFG.channels || []).filter(c => !c.hidden); }
+
+function buildCards() {
+  const g = $('grid');
+  g.innerHTML = '';
+  for (const c of CFG.channels || []) {
+    if (c.role === 'mains') continue;             // shown in the hero instead
+    const el = document.createElement('div');
+    el.className = 'card' + (c.hidden ? ' hidden-ch' : '');
+    el.tabIndex = 0;
+    el.dataset.key = c.key;
+    el.innerHTML = `
+      <div class="name">${esc(c.name)}${c.hidden ? '<span class="tag">hidden</span>' : ''}</div>
+      <div class="w" data-w>—</div>
+      <div class="meta">${c.volts} V${c.note ? ' · ' + esc(c.note) : ''}</div>
+      <div class="bar"><i data-bar style="width:0"></i></div>`;
+    const open = () => openChart(c);
+    el.onclick = open;
+    el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
+    g.appendChild(el);
+  }
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+
+/* ── live poll ───────────────────────────────────────────────────────────── */
+async function tick() {
+  let rows;
+  try {
+    rows = await get('/api/now');
+  } catch (e) {
+    $('status').textContent = 'connection lost — retrying';
+    return;
+  }
+  LAST = {};
+  for (const r of rows) LAST[r.unit_id] = r;
+
+  const chans = CFG.channels || [];
+  const wattOf = c => {
+    const row = LAST[c.unit];
+    return row ? row[c.channel] : null;
+  };
+
+  // Whole-house figure: the mains channel if one is configured, otherwise the
+  // sum of the metered branches. Saying which is which matters — the sum
+  // cannot see anything that has no CT on it.
+  let house = null;
+  if (CFG.mains) {
+    const row = LAST[CFG.mains.unit];
+    house = row ? row[CFG.mains.channel] : null;
+  }
+  if (house == null) {
+    house = chans.filter(c => c.role !== 'mains')
+                 .reduce((a, c) => a + (wattOf(c) || 0), 0);
+  }
+  $('heroW').textContent = fmtW(house);
+
+  const rate = CFG.rate_per_kwh || 0;
+  const sym = CFG.currency_symbol || '$';
+  if (rate && house != null) {
+    const perDay = house / 1000 * 24 * rate;
+    $('heroCost').textContent =
+      `≈ ${sym}${perDay.toFixed(2)}/day at this rate · ${sym}${rate}/kWh`;
+  }
+
+  const peak = Math.max(1, ...chans.filter(c => c.role !== 'mains')
+                                   .map(c => wattOf(c) || 0));
+  for (const c of chans) {
+    if (c.role === 'mains') continue;
+    const el = document.querySelector(`.card[data-key="${CSS.escape(c.key)}"]`);
+    if (!el) continue;
+    const w = wattOf(c);
+    el.querySelector('[data-w]').textContent = fmtW(w);
+    el.querySelector('[data-bar]').style.width =
+      Math.min(100, ((w || 0) / peak) * 100) + '%';
+  }
+
+  const age = rows.length
+    ? Math.round(Date.now() / 1000 - Math.max(...rows.map(r => r.ts))) : null;
+  $('status').textContent = age == null ? 'no data yet'
+    : age > 60 ? `last reading ${age}s ago — collector may be stopped`
+    : `live · updated ${age}s ago`;
+}
+
+/* ── chart ───────────────────────────────────────────────────────────────── */
+async function openChart(c) {
+  openCh = c;
+  $('dlgTitle').textContent = c.name;
+  const r = $('ranges');
+  r.innerHTML = '';
+  RANGES.forEach((rg, i) => {
+    const b = document.createElement('button');
+    b.textContent = rg.label;
+    b.setAttribute('aria-pressed', String(i === openRange));
+    b.onclick = () => { openRange = i; openChart(c); };
+    r.appendChild(b);
+  });
+  $('dlg').showModal();
+  await drawChart();
+}
+
+async function drawChart() {
+  const c = openCh, rg = RANGES[openRange];
+  $('chart').innerHTML = '<div style="color:var(--dim);padding:24px 0">loading…</div>';
+  let d;
+  try {
+    d = await get(`/api/history?channel=${c.channel}&unit=${c.unit}` +
+                  `&minutes=${rg.minutes}&points=${rg.points}`);
+  } catch (e) {
+    $('chart').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+    return;
+  }
+  const pts = (d.points || []).filter(p => p.w != null);
+  if (!pts.length) {
+    $('chart').innerHTML =
+      '<div style="color:var(--dim);padding:24px 0">No data in this range.</div>';
+    return;
+  }
+
+  const W = 860, H = 300, L = 62, R = 12, T = 14, B = 34;
+  const maxW = Math.max(...pts.map(p => p.w), 1);
+  const t0 = pts[0].ts, t1 = pts[pts.length - 1].ts || t0 + 1;
+  const x = t => L + (t - t0) / Math.max(t1 - t0, 1) * (W - L - R);
+  const y = w => T + (1 - w / maxW) * (H - T - B);
+
+  let dpath = '';
+  pts.forEach((p, i) => { dpath += (i ? 'L' : 'M') + x(p.ts).toFixed(1) + ',' + y(p.w).toFixed(1); });
+  const area = dpath + `L${x(t1).toFixed(1)},${y(0)}L${x(t0).toFixed(1)},${y(0)}Z`;
+
+  // Gridlines and labels
+  let grid = '';
+  for (let i = 0; i <= 4; i++) {
+    const v = maxW * i / 4, yy = y(v);
+    grid += `<line x1="${L}" y1="${yy}" x2="${W - R}" y2="${yy}" stroke="var(--line)" stroke-width="1"/>`;
+    grid += `<text x="${L - 8}" y="${yy + 5}" text-anchor="end" font-size="13" fill="var(--dim)">${fmtW(v)}</text>`;
+  }
+  let ticks = '';
+  const N = 5;
+  for (let i = 0; i <= N; i++) {
+    const t = t0 + (t1 - t0) * i / N;
+    const dt = new Date(t * 1000);
+    const lbl = rg.minutes > 1440
+      ? dt.toLocaleDateString([], { month: 'short', day: 'numeric' })
+      : dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    ticks += `<text x="${x(t).toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="13" fill="var(--dim)">${lbl}</text>`;
+  }
+
+  const avg = pts.reduce((a, p) => a + p.w, 0) / pts.length;
+  const kwh = avg / 1000 * (rg.minutes / 60);
+  const sym = CFG.currency_symbol || '$';
+  const cost = kwh * (CFG.rate_per_kwh || 0);
+
+  $('chart').innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(c.name)} power over ${rg.label}">
+      ${grid}
+      <path d="${area}" fill="var(--accent)" opacity="0.16"/>
+      <path d="${dpath}" fill="none" stroke="var(--accent)" stroke-width="2"
+            stroke-linejoin="round" stroke-linecap="round"/>
+      ${ticks}
+    </svg>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:14px;font-size:15px">
+      <span><b>${fmtW(avg)}</b> <span style="color:var(--dim)">average</span></span>
+      <span><b>${fmtW(maxW)}</b> <span style="color:var(--dim)">peak</span></span>
+      <span><b>${kwh.toFixed(2)} kWh</b> <span style="color:var(--dim)">over ${rg.label}</span></span>
+      ${CFG.rate_per_kwh ? `<span><b>${sym}${cost.toFixed(2)}</b> <span style="color:var(--dim)">estimated</span></span>` : ''}
+    </div>`;
+}
+
+/* ── insights ────────────────────────────────────────────────────────────── */
+async function loadInsights() {
+  let d;
+  try {
+    d = await get('/api/insights');
+  } catch (e) {
+    return;
+  }
+  const cards = d.cards || [];
+  if (!cards.length) { $('insH').hidden = true; $('ins').innerHTML = ''; return; }
+  $('insH').hidden = false;
+  $('ins').innerHTML = cards.map(c => `
+    <div class="ins ${esc(c.level)}">
+      <div class="t">${esc(c.title)}${c.stat ? `<span class="tag">${esc(c.stat)}</span>` : ''}</div>
+      <div class="d">${esc(c.detail)}</div>
+    </div>`).join('') +
+    (d.stale ? `<div class="ins info"><div class="d">These findings are
+      ${Math.round((d.age_s || 0) / 60)} minutes old — the insights job may have
+      stopped running.</div></div>` : '');
+}
+
+boot();
+</script>
+</body>
+</html>

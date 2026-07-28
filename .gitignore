@@ -1,0 +1,28 @@
+# Your configuration — never commit this. It holds your circuit names,
+# your rate, your email address and your serial ports.
+config.yaml
+profiles.yaml
+
+# Your data. The energy database reveals when your house is occupied and when
+# it is empty — treat it as sensitive and keep it out of version control.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+energy-data/
+insights.json
+insight-history.json
+
+# Python
+.venv/
+venv*/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/

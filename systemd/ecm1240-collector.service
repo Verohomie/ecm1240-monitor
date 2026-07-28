@@ -1,0 +1,18 @@
+[Unit]
+Description=ECM-1240 energy collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ecm
+# `dialout` group membership is what lets this user open the serial ports.
+WorkingDirectory=/opt/ecm1240
+EnvironmentFile=-/etc/ecm1240/env
+Environment=ECM1240_CONFIG=/etc/ecm1240/config.yaml
+ExecStart=/opt/ecm1240/.venv/bin/python -m ecm1240.collector
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

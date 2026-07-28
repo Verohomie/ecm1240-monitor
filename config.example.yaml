@@ -1,0 +1,153 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  ecm1240-monitor — example configuration
+#
+#  Copy this file to config.yaml and edit it. config.yaml is gitignored, so
+#  your circuit names, rate and email never end up in version control.
+#
+#      cp config.example.yaml config.yaml
+#
+#  There is no built-in default configuration. The program will refuse to start
+#  without this file, on purpose: channel names and calibration have to describe
+#  YOUR panel, and guessing them produces readings that look plausible and are
+#  wrong.
+# ─────────────────────────────────────────────────────────────────────────────
+
+site:
+  name: "My House"           # shown in the dashboard header
+  rate_per_kwh: 0.15         # your electricity rate, for the cost estimates
+  currency_symbol: "$"
+  timezone: "America/New_York"
+
+database:
+  # Put this on real storage, not an SD card. At a 5-second sample rate an SD
+  # card will wear out — a cheap USB SSD or a spare laptop drive is plenty.
+  path: "/var/lib/ecm1240/energy.db"
+
+api:
+  # SAFE DEFAULT. 127.0.0.1 means only this machine can reach the API.
+  #
+  # Changing this to "0.0.0.0" exposes your complete household energy history
+  # to every device on your network with NO password. That history shows when
+  # your house is occupied and when it is empty. Read SECURITY.md first, and
+  # never port-forward this to the internet.
+  bind: "127.0.0.1"
+  port: 8080
+  # Blank = same-origin only. Setting "*" lets ANY website a household member
+  # visits read your energy data through their browser. Leave it blank unless
+  # you know exactly why you need otherwise.
+  allowed_origin: ""
+
+collector:
+  flush_interval: 30         # seconds between batched database commits
+  # Optional live CSV feed for a home-automation controller. 0 = disabled.
+  # One line per packet:  E,<unit>,<volts*10>,<ch1_W>,...,<aux5_W>
+  live_feed_port: 0
+  live_feed_bind: "127.0.0.1"
+  gateway_port: 8082         # only used with --gateway
+
+# ─── Meters ──────────────────────────────────────────────────────────────────
+#
+#  IMPORTANT — use /dev/serial/by-path/ names, NOT /dev/ttyUSB0.
+#
+#  Every ECM-1240 reports unit_id=0 in its packets no matter how it is
+#  configured, so the only way to tell two meters apart is which port each is
+#  plugged into. ttyUSB numbering changes across reboots, and cheap PL2303
+#  adapters report no serial number so by-id names collide.
+#
+#  Find your ports with:      ls -l /dev/serial/by-path/
+#  Then confirm the mapping:  python3 tools/verify_unit_identity.py
+#
+#  If two meters swap ports, one meter's counters get subtracted from the
+#  other's and you get confidently wrong watts — no error, no symptom.
+#
+meters:
+  - unit: 0
+    port: "/dev/serial/by-path/CHANGE-ME"
+    baud: 19200
+
+    # Per-channel watt calibration, applied before storage.
+    #
+    #  !! ONLY set a factor here if you have VERIFIED against a clamp meter.
+    #
+    #  The usual reason to need one: mains CTs programmed in the meter with the
+    #  wrong CT range report a fraction of the real current. You can fix that
+    #  EITHER in the meter's own settings OR here — NEVER BOTH, or the channel
+    #  reads double. See CALIBRATION.md.
+    #
+    #  Example (a DUAL mains channel reading exactly half):
+    #    calibration: { ch1: 2.0 }
+    calibration: {}
+
+    # Channels you have a CT on. Delete any you are not using — an unlisted
+    # channel is simply not shown.
+    #
+    #   name   what to call it in the dashboard
+    #   volts  nominal circuit voltage (120 or 240), used for cost estimates
+    #   role   "mains" for the whole-house channel; omit for ordinary branches
+    #   hidden true to keep recording but not display (a suspect CT)
+    #   note   free text shown in the UI, e.g. why a channel is hidden
+    channels:
+      ch1:  { name: "Mains",     volts: 240, role: "mains" }
+      ch2:  { name: "Circuit 2", volts: 240 }
+      aux1: { name: "Circuit 3", volts: 240 }
+      aux2: { name: "Circuit 4", volts: 120 }
+      aux3: { name: "Circuit 5", volts: 120 }
+      aux4: { name: "Circuit 6", volts: 120 }
+      aux5: { name: "Circuit 7", volts: 120 }
+
+  # A second meter is optional — delete this whole block if you have one meter.
+  # - unit: 1
+  #   port: "/dev/serial/by-path/CHANGE-ME-TOO"
+  #   baud: 19200
+  #   calibration: {}
+  #   channels:
+  #     ch1:  { name: "Circuit 8",  volts: 240 }
+  #     ch2:  { name: "Circuit 9",  volts: 240 }
+  #     aux1: { name: "Circuit 10", volts: 240 }
+  #     aux2: { name: "Circuit 11", volts: 120 }
+  #     aux3: { name: "Circuit 12", volts: 120 }
+  #     aux4: { name: "Circuit 13", volts: 120 }
+  #     aux5: { name: "Circuit 14", volts: 120 }
+
+# ─── Unmetered load ──────────────────────────────────────────────────────────
+#
+#  Loads on the mains with no CT of their own — an EV charger, a subpanel added
+#  after the meters went in. This sets how far the mains may legitimately
+#  exceed the sum of the metered branches before a reading is treated as a
+#  sensor fault.
+#
+#  Set this HIGHER than your largest unmetered load. Too low and a real load
+#  gets rejected as impossible; an EV charger on a 60 A circuit can draw
+#  ~14 kW, so a 7 kW ceiling would throw away every genuine reading while it
+#  charges.
+unmetered:
+  max_watts: 20000
+  label: "Unmetered"         # shown in the dashboard's cost breakdown
+
+# ─── Consistency guards ──────────────────────────────────────────────────────
+#  Sane defaults. Change only if you understand what each rule rejects.
+guards:
+  max_plausible_watts: 50000  # per-channel absolute ceiling
+  min_interval_s: 2           # below this the meter's seconds delta is unreliable
+  rebase_after_s: 120         # longer gap than this -> resync instead of emitting
+  coherence_k: 1.3            # real watts can't exceed V*A; slack for power factor
+
+# ─── Insights (optional) ─────────────────────────────────────────────────────
+#  Appliance-health rules. Thresholds have to match YOUR circuits, so there are
+#  no defaults. Generate a starter file from your own data once you have a few
+#  days logged:
+#
+#      python3 tools/suggest_profiles.py > profiles.yaml
+#
+#  Insights stay silent until profiles.yaml exists.
+insights:
+  profiles: "profiles.yaml"
+
+# ─── Daily email digest (optional) ───────────────────────────────────────────
+#  Sends a once-a-day summary. Needs a Resend account (resend.com) — the API
+#  key comes from the RESEND_API_KEY environment variable, NEVER from this file.
+digest:
+  enabled: false
+  to: "you@example.com"
+  from: "Energy Monitor <noreply@your-domain.example>"
+  send_at: "09:00"

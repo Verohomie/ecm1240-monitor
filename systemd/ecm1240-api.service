@@ -1,0 +1,16 @@
+[Unit]
+Description=ECM-1240 read-only API and dashboard
+After=network-online.target
+
+[Service]
+Type=simple
+User=ecm
+WorkingDirectory=/opt/ecm1240
+EnvironmentFile=-/etc/ecm1240/env
+Environment=ECM1240_CONFIG=/etc/ecm1240/config.yaml
+ExecStart=/opt/ecm1240/.venv/bin/python -m ecm1240.api
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
