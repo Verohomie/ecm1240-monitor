@@ -9,7 +9,7 @@ sudo apt install python3-pip python3-venv git sqlite3
 sudo mkdir -p /opt/ecm1240 /var/lib/ecm1240 /etc/ecm1240
 sudo chown "$USER" /opt/ecm1240 /var/lib/ecm1240 /etc/ecm1240
 
-git clone https://github.com/YOUR-USERNAME/ecm1240-monitor.git /opt/ecm1240
+git clone https://github.com/Verohomie/ecm1240-monitor.git /opt/ecm1240
 cd /opt/ecm1240
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt

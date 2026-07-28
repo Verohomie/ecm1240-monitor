@@ -252,7 +252,7 @@ footer {
          stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>Step 0 — Try It With No Hardware</h2>
     <p class="intro">Ten minutes, no risk, no purchase. Do this first.</p>
     <div class="comment-block">
-      <pre>git clone https://github.com/YOUR-USERNAME/ecm1240-monitor.git
+      <pre>git clone https://github.com/Verohomie/ecm1240-monitor.git
 cd ecm1240-monitor
 python3 -m venv .venv &amp;&amp; source .venv/bin/activate
 pip install -r requirements.txt
@@ -522,7 +522,7 @@ sudo useradd -r -s /usr/sbin/nologin ecm
 sudo usermod -aG dialout ecm            # permission to read serial ports
 sudo chown -R ecm /var/lib/ecm1240
 
-git clone https://github.com/YOUR-USERNAME/ecm1240-monitor.git /opt/ecm1240
+git clone https://github.com/Verohomie/ecm1240-monitor.git /opt/ecm1240
 cd /opt/ecm1240 &amp;&amp; python3 -m venv .venv &amp;&amp; .venv/bin/pip install -r requirements.txt
 sudo cp config.yaml /etc/ecm1240/config.yaml
 

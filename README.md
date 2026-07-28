@@ -29,7 +29,7 @@ leaving a lot of working hardware with nowhere to send its data.
 ## Try it with no hardware
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/ecm1240-monitor.git
+git clone https://github.com/Verohomie/ecm1240-monitor.git
 cd ecm1240-monitor
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -76,7 +76,7 @@ activity. It also works with the internet unplugged.
 
 ```bash
 sudo apt install python3-pip python3-venv
-git clone https://github.com/YOUR-USERNAME/ecm1240-monitor.git
+git clone https://github.com/Verohomie/ecm1240-monitor.git
 cd ecm1240-monitor
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
