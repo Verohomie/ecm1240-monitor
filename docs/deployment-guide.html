@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ecm1240-monitor — Deployment Guide</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 14px;
+  background: #f0f4f8;
+  color: #1a202c;
+  line-height: 1.55;
+}
+.page { max-width: 860px; margin: 0 auto; padding: 0 0 60px; }
+header {
+  background: #0d1b2e; color: #e2e8f0;
+  padding: 28px 36px 22px; border-radius: 0 0 8px 8px; margin-bottom: 28px;
+}
+header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; color: #fff; }
+header .meta {
+  margin-top: 8px; font-size: 12px; color: #93c5fd;
+  display: flex; flex-wrap: wrap; gap: 20px;
+}
+header .meta span { white-space: nowrap; }
+.verdict {
+  margin: 0 24px 24px; padding: 16px 22px; border-radius: 8px;
+  font-size: 15px; font-weight: 700; border-left: 6px solid;
+  display: flex; align-items: flex-start; gap: 14px;
+}
+.verdict.needs-work { background: #fff8ed; border-color: #e67e22; color: #7a3e00; }
+.verdict.pass       { background: #f0fdf4; border-color: #27ae60; color: #14532d; }
+.verdict.block      { background: #fff5f5; border-color: #c0392b; color: #7f1d1d; }
+.verdict .vicon { font-size: 22px; line-height: 1; }
+.verdict .vtxt { display: flex; flex-direction: column; gap: 4px; }
+.verdict .vtitle { font-size: 17px; }
+.verdict .vsummary { font-weight: 400; font-size: 14px; color: #555; }
+.note-box {
+  margin: 0 24px 20px; background: #f0fdf4; border: 1px solid #86efac;
+  border-radius: 8px; padding: 14px 18px; font-size: 13px; color: #14532d;
+}
+.note-box strong { display: block; margin-bottom: 4px; font-size: 13px; color: #166534; }
+.section { margin: 0 24px 32px; }
+.section h2 {
+  font-size: 15px; font-weight: 700; color: #0d1b2e;
+  padding-bottom: 8px; border-bottom: 2px solid #cbd5e1;
+  margin-bottom: 14px; letter-spacing: 0.2px;
+}
+.section p.intro { font-size: 13px; color: #475569; margin-bottom: 12px; }
+.section h3 { font-size: 13px; color: #1e3a5f; margin: 18px 0 8px; }
+.findings { width: 100%; border-collapse: collapse; font-size: 13px; }
+.findings thead tr { background: #1e3a5f; color: #e2e8f0; }
+.findings thead th {
+  padding: 9px 12px; text-align: left;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.4px; white-space: nowrap;
+}
+.findings tbody tr:nth-child(even) { background: #f8fafc; }
+.findings tbody tr:nth-child(odd)  { background: #fff; }
+.findings tbody tr:hover { background: #eff6ff; }
+.findings td { padding: 10px 12px; vertical-align: top; border-bottom: 1px solid #e2e8f0; }
+.findings td:first-child { width: 100px; }
+.findings td code, .section code {
+  font-family: 'Courier New', monospace; font-size: 12px;
+  background: #f1f5f9; padding: 1px 4px; border-radius: 3px; color: #1e40af;
+}
+.findings.loc td:nth-child(2) { width: 175px; font-family: 'Courier New', monospace; font-size: 12px; color: #1e40af; }
+.badge {
+  display: inline-block; padding: 3px 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.5px; white-space: nowrap;
+}
+.badge.critical   { background: #fde8e8; color: #c0392b; border: 1px solid #f5a5a5; }
+.badge.warning    { background: #fef3e2; color: #d35400; border: 1px solid #f6c97a; }
+.badge.suggestion { background: #e8f4fd; color: #1a5f8a; border: 1px solid #90cdf4; }
+.badge.resolved   { background: #e8faf0; color: #27ae60; border: 1px solid #86efac; }
+.badge.positive   { background: #e8faf0; color: #27ae60; border: 1px solid #86efac; }
+tr.sev-critical   td { background: #fff5f5 !important; }
+tr.sev-warning    td { background: #fffbf0 !important; }
+tr.sev-suggestion td { background: #f0f7ff !important; }
+tr.sev-resolved   td { background: #f0fdf4 !important; }
+tr.sev-critical:hover   td { background: #ffe4e4 !important; }
+tr.sev-warning:hover    td { background: #fff3cc !important; }
+tr.sev-suggestion:hover td { background: #dbeafe !important; }
+tr.sev-resolved:hover   td { background: #dcfce7 !important; }
+.action-list { list-style: none; counter-reset: actions; }
+.action-list li {
+  counter-increment: actions; display: flex; gap: 12px;
+  align-items: flex-start; padding: 10px 14px;
+  border-bottom: 1px solid #e2e8f0; font-size: 13px;
+}
+.action-list li:last-child { border-bottom: none; }
+.action-list li::before {
+  content: counter(actions); font-size: 11px; font-weight: 700;
+  color: #fff; background: #0d1b2e; min-width: 22px; height: 22px;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 1px;
+}
+.action-list .al-badge { flex-shrink: 0; }
+.action-list .al-text { flex: 1; }
+.action-list code { font-family: 'Courier New', monospace; font-size: 12px; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; color: #1e40af; }
+.comment-block {
+  background: #f8fafc; border: 1px solid #e2e8f0;
+  border-left: 4px solid #0d1b2e; border-radius: 0 6px 6px 0;
+  padding: 14px 18px; margin-bottom: 16px; font-size: 13px;
+}
+.comment-block h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 8px; }
+.comment-block pre {
+  background: #1e293b; color: #e2e8f0; padding: 12px 16px;
+  border-radius: 6px; font-family: 'Courier New', monospace; font-size: 12px;
+  overflow-x: auto; white-space: pre-wrap; word-break: break-word; line-height: 1.6;
+}
+.test-cases { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px 18px; font-size: 13px; color: #334155; }
+.test-cases h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 10px; }
+.test-cases ul { padding-left: 18px; }
+.test-cases li { margin-bottom: 6px; }
+footer {
+  text-align: center; font-size: 11px; color: #94a3b8;
+  padding: 24px; border-top: 1px solid #e2e8f0; margin: 40px 24px 0;
+}
+.ico { vertical-align: -3px; color: #1e40af; margin-right: 6px; }
+.diagram-wrap { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <h1>ecm1240-monitor — Deployment Guide</h1>
+    <div class="meta">
+      <span>Version 1.0</span>
+      <span>Updated: 2026-07-28</span>
+      <span>Scope: wiring → install → verification → live</span>
+      <span>Time: 2–3 hours, plus an electrician if needed</span>
+    </div>
+  </header>
+
+  <div class="verdict block">
+    <div class="vicon">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+    </div>
+    <div class="vtxt">
+      <div class="vtitle">Read this before you open anything</div>
+      <div class="vsummary">
+        This project needs current transformers installed inside a <strong>live electrical
+        panel</strong>. Mains conductors carry enough energy to kill you and to start a fire.
+        <strong>If you are not qualified to work in a live panel, stop and hire an
+        electrician.</strong> The software will still be here when they have finished. Everything
+        from Step 3 onward is safe desk work.
+      </div>
+    </div>
+  </div>
+
+  <div class="note-box">
+    <strong>You can try the whole thing first, with no hardware at all.</strong>
+    Before buying or wiring anything, run the demo: it generates a fake week of data and runs the
+    complete application against it. Jump to <em>Step 0</em>. If you do not like the software, you
+    have lost ten minutes instead of a weekend.
+  </div>
+
+  <!-- ── ARCHITECTURE ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>What You Are Building</h2>
+    <p class="intro">
+      Current clamps on your breakers feed one or two meters. The meters talk serial to a small
+      Linux box, which stores everything locally and serves a dashboard. Nothing leaves your house.
+    </p>
+
+    <div class="diagram-wrap">
+      <svg viewBox="0 0 820 430" width="100%" role="img" aria-label="System architecture">
+        <defs>
+          <marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#1e40af"/>
+          </marker>
+        </defs>
+
+        <rect x="250" y="8" width="320" height="54" rx="8" fill="#0d1b2e"/>
+        <text x="410" y="30" fill="#e2e8f0" font-size="13" font-weight="bold" text-anchor="middle" font-family="Arial">Breaker Panel</text>
+        <text x="410" y="48" fill="#93c5fd" font-size="11" text-anchor="middle" font-family="Arial">one current clamp per circuit you want to see</text>
+
+        <line x1="340" y1="62" x2="230" y2="94" stroke="#1e40af" stroke-width="2" marker-end="url(#arrow)"/>
+        <line x1="480" y1="62" x2="590" y2="94" stroke="#1e40af" stroke-width="2" marker-end="url(#arrow)"/>
+
+        <rect x="60" y="98" width="290" height="56" rx="8" fill="#1e3a5f"/>
+        <text x="205" y="120" fill="#e2e8f0" font-size="13" font-weight="bold" text-anchor="middle" font-family="Arial">ECM-1240 &#183; unit 0</text>
+        <text x="205" y="137" fill="#93c5fd" font-size="11" text-anchor="middle" font-family="Arial">7 channels &#183; 12 VAC transformer</text>
+
+        <rect x="470" y="98" width="290" height="56" rx="8" fill="#1e3a5f"/>
+        <text x="615" y="120" fill="#e2e8f0" font-size="13" font-weight="bold" text-anchor="middle" font-family="Arial">ECM-1240 &#183; unit 1</text>
+        <text x="615" y="137" fill="#93c5fd" font-size="11" text-anchor="middle" font-family="Arial">optional second meter</text>
+
+        <line x1="205" y1="154" x2="205" y2="190" stroke="#1e40af" stroke-width="2" marker-end="url(#arrow)"/>
+        <line x1="615" y1="154" x2="615" y2="190" stroke="#1e40af" stroke-width="2" marker-end="url(#arrow)"/>
+        <text x="213" y="176" fill="#27ae60" font-size="11" font-weight="bold" font-family="Arial">RS-232, 19200 8N1</text>
+        <text x="623" y="176" fill="#27ae60" font-size="11" font-weight="bold" font-family="Arial">its OWN cable</text>
+
+        <rect x="60" y="194" width="290" height="46" rx="8" fill="#1e3a5f"/>
+        <text x="205" y="222" fill="#e2e8f0" font-size="12" text-anchor="middle" font-family="Arial">USB serial adapter &#8594; its own port</text>
+        <rect x="470" y="194" width="290" height="46" rx="8" fill="#1e3a5f"/>
+        <text x="615" y="222" fill="#e2e8f0" font-size="12" text-anchor="middle" font-family="Arial">USB serial adapter &#8594; its own port</text>
+
+        <line x1="205" y1="240" x2="300" y2="272" stroke="#1e40af" stroke-width="2" marker-end="url(#arrow)"/>
+        <line x1="615" y1="240" x2="520" y2="272" stroke="#1e40af" stroke-width="2" marker-end="url(#arrow)"/>
+
+        <rect x="140" y="276" width="540" height="86" rx="8" fill="#0d1b2e"/>
+        <text x="410" y="299" fill="#e2e8f0" font-size="13" font-weight="bold" text-anchor="middle" font-family="Arial">Raspberry Pi / any Linux box</text>
+        <text x="410" y="318" fill="#93c5fd" font-size="11" text-anchor="middle" font-family="Arial">collector &#8594; SQLite on an SSD (never the SD card)</text>
+        <text x="410" y="334" fill="#93c5fd" font-size="11" text-anchor="middle" font-family="Arial">read-only API &#183; dashboard &#183; insights</text>
+        <text x="410" y="352" fill="#27ae60" font-size="11" font-weight="bold" text-anchor="middle" font-family="Arial">identity comes from the PORT, never the packet</text>
+
+        <line x1="410" y1="362" x2="410" y2="392" stroke="#1e40af" stroke-width="2" marker-end="url(#arrow)"/>
+        <rect x="255" y="396" width="310" height="30" rx="8" fill="#27ae60"/>
+        <text x="410" y="416" fill="#fff" font-size="12" font-weight="bold" text-anchor="middle" font-family="Arial">your browser, on your LAN</text>
+      </svg>
+    </div>
+
+    <table class="findings">
+      <thead><tr><th>You need</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>ECM-1240</strong> ×1 or ×2</td>
+          <td>Seven channels each. Each meter needs its own <strong>12 VAC</strong> transformer — this powers it AND is its voltage reference.</td>
+        </tr>
+        <tr>
+          <td><strong>Current transformers</strong></td>
+          <td>One per circuit you want to see. Sized to the circuit: small split-core for branches, larger (e.g. SPLIT-200) for service conductors.</td>
+        </tr>
+        <tr>
+          <td><strong>Serial link</strong></td>
+          <td>RS-232 from each meter to the host. Cat5 works well for the run. <strong>Give each meter its own cable and its own USB adapter.</strong></td>
+        </tr>
+        <tr>
+          <td><strong>USB serial adapters</strong></td>
+          <td>One per meter. <strong>FTDI-based adapters are markedly more reliable</strong> than cheap PL2303 clones, which wedge under sustained use.</td>
+        </tr>
+        <tr>
+          <td><strong>Host</strong></td>
+          <td>Any Linux machine; a Raspberry Pi is plenty. <strong>Plus a USB SSD or spare drive for the database</strong> — an SD card will wear out at a 5-second write cadence.</td>
+        </tr>
+        <tr>
+          <td><strong>True-RMS clamp meter</strong></td>
+          <td>Borrow one if you must. Without it you cannot verify calibration, and an uncalibrated monitor is confidently wrong rather than obviously broken.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── STEP 0 ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>Step 0 — Try It With No Hardware</h2>
+    <p class="intro">Ten minutes, no risk, no purchase. Do this first.</p>
+    <div class="comment-block">
+      <pre>git clone https://github.com/YOUR-USERNAME/ecm1240-monitor.git
+cd ecm1240-monitor
+python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -r requirements.txt
+
+python3 tools/make_demo_data.py --db demo.db --days 7
+python3 -m ecm1240.api --config config.demo.yaml</pre>
+    </div>
+    <p class="intro">
+      Open <code>http://127.0.0.1:8080/</code>. That is the entire application running on
+      synthesised data. Click the whole-house figure, drag across the chart to zoom, drag the strip
+      to pan. If you want insights in the demo too:
+    </p>
+    <div class="comment-block">
+      <pre>python3 -m ecm1240.insights --config config.demo.yaml</pre>
+    </div>
+  </div>
+
+  <!-- ── STEP 1 ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>Step 1 — The Electrical Work</h2>
+    <div class="verdict block" style="margin-left:0;margin-right:0">
+      <div class="vicon">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      </div>
+      <div class="vtxt">
+        <div class="vtitle">Hire an electrician unless you are genuinely qualified</div>
+        <div class="vsummary">
+          There is no shame in it, and the rest of this guide does not care who did the wiring.
+        </div>
+      </div>
+    </div>
+
+    <table class="findings">
+      <thead><tr><th>Severity</th><th>Rule</th></tr></thead>
+      <tbody>
+        <tr class="sev-critical">
+          <td><span class="badge critical">DESTROYS</span></td>
+          <td><strong>12 V<em>AC</em>, never 12 V<em>DC</em>.</strong> A DC supply with the same barrel plug and the same rating will destroy the board. The AC transformer is also how the meter measures voltage — with DC it cannot compute watts even if it survived.</td>
+        </tr>
+        <tr class="sev-critical">
+          <td><span class="badge critical">DESTROYS</span></td>
+          <td><strong>Never power up a meter while holding F1.</strong> That erases the CT calibration, and you will not know until the numbers are wrong.</td>
+        </tr>
+        <tr class="sev-warning">
+          <td><span class="badge warning">CARE</span></td>
+          <td><strong>Clamp direction matters.</strong> CTs are directional; backwards gives negative or nonsensical readings. Most have an arrow indicating current flow toward the load.</td>
+        </tr>
+        <tr class="sev-warning">
+          <td><span class="badge warning">CARE</span></td>
+          <td><strong>Close the clamp fully</strong> until it clicks. A partly-closed core reads low, consistently, and looks like a calibration problem forever.</td>
+        </tr>
+        <tr class="sev-warning">
+          <td><span class="badge warning">CARE</span></td>
+          <td><strong>One conductor per clamp.</strong> Clamping both the hot and the neutral together nets to roughly zero, because the currents oppose.</td>
+        </tr>
+        <tr class="sev-suggestion">
+          <td><span class="badge suggestion">DO</span></td>
+          <td><strong>Write down which CT went on which breaker, as you go.</strong> Take a photo of the panel with labels. Reconstructing this later means turning breakers off one at a time and watching the graph.</td>
+        </tr>
+        <tr class="sev-suggestion">
+          <td><span class="badge suggestion">DO</span></td>
+          <td><strong>For whole-house on a split-phase service, clamp BOTH legs.</strong> One leg is half your house, and it will look plausible.</td>
+        </tr>
+        <tr class="sev-suggestion">
+          <td><span class="badge suggestion">DO</span></td>
+          <td><strong>Run a separate cable per meter</strong> back to the host. Sharing one line between two meters causes collisions and makes them impossible to tell apart.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── STEP 2 ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="2"/><path d="M6 7V5M18 7V5"/></svg>Step 2 — Prove the Meters Are Talking</h2>
+    <p class="intro">Before configuring anything, confirm packets are arriving.</p>
+    <div class="comment-block">
+      <pre>ls -l /dev/serial/by-path/          # what did the adapters enumerate as?
+python3 tools/ecm_sniff.py /dev/ttyUSB0</pre>
+    </div>
+    <p class="intro">
+      You should see a line per packet with volts, amps and derived watts. If you see nothing at
+      all, work through this before suspecting the hardware:
+    </p>
+    <table class="findings">
+      <thead><tr><th>Symptom</th><th>What to do</th></tr></thead>
+      <tbody>
+        <tr class="sev-warning">
+          <td><strong>Total silence</strong></td>
+          <td>
+            <strong>The single most common false alarm.</strong> A meter with real-time mode
+            switched off is completely silent but perfectly alive — it looks exactly like a dead
+            board. Test it:
+            <div class="comment-block" style="margin:8px 0 0"><pre>python3 tools/ecm_poll.py /dev/ttyUSB0 -v      # does it answer a poll?
+python3 tools/ecm_realtime.py /dev/ttyUSB0 --on   # if yes, switch streaming back on</pre></div>
+          </td>
+        </tr>
+        <tr class="sev-suggestion">
+          <td><strong>No device in <code>/dev/serial/</code></strong></td>
+          <td>The adapter is not enumerating. <code>dmesg | tail</code> after unplugging and replugging tells you whether the kernel sees it.</td>
+        </tr>
+        <tr class="sev-suggestion">
+          <td><strong>Garbage or bad checksums</strong></td>
+          <td>Wrong baud (must be 19200 8N1), or a marginal cable. A few bad checksums an hour is normal; a constant stream of them is not.</td>
+        </tr>
+        <tr class="sev-suggestion">
+          <td><strong>"Permission denied"</strong></td>
+          <td>Your user is not in the <code>dialout</code> group: <code>sudo usermod -aG dialout $USER</code>, then log out and back in.</td>
+        </tr>
+        <tr class="sev-suggestion">
+          <td><strong>"Device busy"</strong></td>
+          <td>Something else holds the port — usually the collector. <code>sudo systemctl stop ecm1240-collector</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── STEP 3 ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.09A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Step 3 — Configure</h2>
+    <div class="comment-block">
+      <pre>cp config.example.yaml config.yaml
+nano config.yaml</pre>
+    </div>
+
+    <div class="verdict needs-work" style="margin-left:0;margin-right:0">
+      <div class="vicon">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+      </div>
+      <div class="vtxt">
+        <div class="vtitle">Use <code>/dev/serial/by-path/</code> names, never <code>/dev/ttyUSB0</code></div>
+        <div class="vsummary">
+          Every ECM-1240 reports <code>unit_id=0</code> in its packets no matter how it is
+          configured, so the ONLY way to tell two meters apart is which port each is plugged into.
+          <code>ttyUSB</code> numbering changes between reboots, and cheap adapters report no
+          serial number so <code>by-id</code> names collide. If the two swap, one meter's counters
+          get subtracted from the other's and every reading afterwards is wrong —
+          <strong>with no error message and no visible symptom.</strong>
+        </div>
+      </div>
+    </div>
+
+    <h3>The parts you must change</h3>
+    <table class="findings loc">
+      <thead><tr><th>Priority</th><th>Setting</th><th>What to do</th></tr></thead>
+      <tbody>
+        <tr class="sev-critical">
+          <td><span class="badge critical">REQUIRED</span></td>
+          <td>meters[].port</td>
+          <td>The <code>by-path</code> name for each meter. The program refuses to start while this still says <code>CHANGE-ME</code>.</td>
+        </tr>
+        <tr class="sev-critical">
+          <td><span class="badge critical">REQUIRED</span></td>
+          <td>meters[].channels</td>
+          <td>Name each channel for the circuit its CT is on. Delete channels you are not using. Mark the whole-house channel <code>role: "mains"</code>.</td>
+        </tr>
+        <tr class="sev-warning">
+          <td><span class="badge warning">IMPORTANT</span></td>
+          <td>database.path</td>
+          <td>Point it at your SSD, not the SD card.</td>
+        </tr>
+        <tr class="sev-warning">
+          <td><span class="badge warning">IMPORTANT</span></td>
+          <td>unmetered.max_watts</td>
+          <td>Must be <strong>higher than your largest circuit with no CT on it</strong>. An EV charger draws ~14 kW; too low a value silently rejects real readings for hours. See the trap below.</td>
+        </tr>
+        <tr class="sev-suggestion">
+          <td><span class="badge suggestion">SET</span></td>
+          <td>site.rate_per_kwh</td>
+          <td>Your electricity rate, so the cost figures mean something.</td>
+        </tr>
+        <tr class="sev-suggestion">
+          <td><span class="badge suggestion">LEAVE</span></td>
+          <td>calibration</td>
+          <td><strong>Leave empty until you have measured with a clamp meter.</strong> See Step 5.</td>
+        </tr>
+        <tr class="sev-suggestion">
+          <td><span class="badge suggestion">LEAVE</span></td>
+          <td>api.bind</td>
+          <td>Leave at <code>127.0.0.1</code> for now. Widen it deliberately later, after reading the security section.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="comment-block">
+      <h4>The unmetered-load trap, in plain terms</h4>
+      <p style="margin-bottom:8px">
+        The collector sanity-checks the whole-house reading against the sum of the individual
+        circuits. If the mains claims far more than the circuits add up to, something is wrong —
+        normally a failing sensor — so the reading is thrown away.
+      </p>
+      <p style="margin-bottom:0">
+        But if you have a <strong>big load with no clamp on it</strong> — an EV charger, a
+        subpanel added later — then the mains legitimately exceeds the sum whenever it runs. Set
+        <code>unmetered.max_watts</code> above that load, or the monitor will discard hours of
+        perfectly real data every time the car charges. The classic symptom is
+        <em>"my readings vanish at the same time every evening."</em>
+      </p>
+    </div>
+  </div>
+
+  <!-- ── STEP 4 ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Step 4 — First Run</h2>
+    <div class="comment-block">
+      <pre>python3 -m ecm1240.collector --dry-run     # decode and log, write nothing</pre>
+    </div>
+    <p class="intro">
+      Watch for a minute. Every meter should log a line per packet with sensible volts (around
+      120 V or 240 V depending on your service) and watts that respond when you switch something
+      on. <strong>Turn on a kettle and watch the right circuit move.</strong> That single check
+      catches most CT-to-channel mix-ups.
+    </p>
+    <p class="intro">When it looks right, drop the flag and let it write:</p>
+    <div class="comment-block">
+      <pre>python3 -m ecm1240.collector             # in one terminal
+python3 -m ecm1240.api                   # in another</pre>
+    </div>
+    <p class="intro">Open <code>http://127.0.0.1:8080/</code>.</p>
+  </div>
+
+  <!-- ── STEP 5 ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg>Step 5 — Calibrate (Do Not Skip)</h2>
+    <p class="intro">
+      An energy monitor that is wrong looks exactly like one that is right. There is no error, no
+      gap in the graph — just believable numbers that happen to be false. Full detail is in
+      <code>docs/CALIBRATION.md</code>; the short version:
+    </p>
+    <ul class="action-list">
+      <li>
+        <span class="al-badge"><span class="badge warning">FIRST</span></span>
+        <span class="al-text"><strong>Read back what the meter thinks its CTs are.</strong> <code>python3 tools/ecm_settings.py /dev/ttyUSB0</code> prints the stored CT type and range per channel. A frequent real-world fault is mains CTs programmed with a smaller CT's setting, so the channel reports <strong>exactly half</strong> the truth — an entirely believable number.</span>
+      </li>
+      <li>
+        <span class="al-badge"><span class="badge warning">THEN</span></span>
+        <span class="al-text"><strong>Measure against a clamp meter.</strong> Put a big steady load on a circuit, clamp the same conductor, compare. Do it at two load levels — a CT right at 5 A but wrong at 30 A has a different problem from one off by a constant factor.</span>
+      </li>
+      <li>
+        <span class="al-badge"><span class="badge warning">MAINS</span></span>
+        <span class="al-text"><strong>On a split-phase service, measure BOTH legs and add them</strong> before comparing to a whole-house channel. Comparing one leg to a two-leg total is how people convince themselves of a factor-of-two error that is not there.</span>
+      </li>
+      <li>
+        <span class="al-badge"><span class="badge critical">TRAP</span></span>
+        <span class="al-text"><strong>Correct it in the meter OR in <code>calibration:</code> — never both.</strong> Doing both applies the fix twice: a channel reading half now reads double, a four-fold error from where you started, and it will still look like a plausible house. If you reprogram the meter, delete the config entry in the same sitting.</span>
+      </li>
+      <li>
+        <span class="al-badge"><span class="badge suggestion">CHECK</span></span>
+        <span class="al-text"><strong>Compare a month against your utility bill.</strong> The best end-to-end check available, and it needs no equipment.</span>
+      </li>
+    </ul>
+  </div>
+
+  <!-- ── STEP 6 ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/></svg>Step 6 — Make It Permanent</h2>
+    <div class="comment-block">
+      <pre>sudo mkdir -p /opt/ecm1240 /var/lib/ecm1240 /etc/ecm1240
+sudo useradd -r -s /usr/sbin/nologin ecm
+sudo usermod -aG dialout ecm            # permission to read serial ports
+sudo chown -R ecm /var/lib/ecm1240
+
+git clone https://github.com/YOUR-USERNAME/ecm1240-monitor.git /opt/ecm1240
+cd /opt/ecm1240 &amp;&amp; python3 -m venv .venv &amp;&amp; .venv/bin/pip install -r requirements.txt
+sudo cp config.yaml /etc/ecm1240/config.yaml
+
+sudo cp systemd/*.service systemd/*.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now ecm1240-collector ecm1240-api
+sudo systemctl enable --now ecm1240-insights.timer
+
+journalctl -fu ecm1240-collector</pre>
+    </div>
+    <p class="intro">
+      <strong>Forgetting <code>dialout</code> is the usual reason a service cannot open a port that
+      worked fine by hand.</strong>
+    </p>
+
+    <h3>Friendly device names (optional)</h3>
+    <div class="comment-block">
+      <pre># /etc/udev/rules.d/99-ecm1240.rules
+SUBSYSTEM=="tty", KERNELS=="1-1.2:1.0", SYMLINK+="ecm-a"
+SUBSYSTEM=="tty", KERNELS=="1-1.3:1.0", SYMLINK+="ecm-b"</pre>
+    </div>
+    <p class="intro">
+      Key the rule on <code>KERNELS</code> — the physical port — <strong>not</strong> on
+      vendor/product id. Two identical adapters cannot be told apart by id, which is the whole
+      reason identity comes from the port in the first place.
+    </p>
+  </div>
+
+  <!-- ── STEP 7 ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/><path d="M9 21h6"/></svg>Step 7 — Turn On Insights (After a Few Days)</h2>
+    <p class="intro">
+      Insights need to know what "running" means for each of your circuits, and those numbers
+      depend on your appliances. Rather than shipping someone else's thresholds, the tool works
+      yours out from your own recorded data. <strong>Let it log for at least a few days first — a
+      week is better.</strong>
+    </p>
+    <div class="comment-block">
+      <pre>python3 tools/suggest_profiles.py --explain &gt; profiles.yaml</pre>
+    </div>
+    <p class="intro">
+      It builds a histogram of each circuit's watts, finds the empty gap between "off" and
+      "running", and puts the thresholds there — then classifies each circuit from how it behaves
+      over time. <code>--explain</code> annotates each entry with the evidence.
+    </p>
+    <div class="note-box">
+      <strong>Read the result before trusting it.</strong>
+      It knows that a channel has two states about 650 W apart. It does not know that channel is
+      your pool pump. Rename things, fix anything odd, delete circuits you do not care about.
+    </div>
+  </div>
+
+  <!-- ── STEP 8 ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Step 8 — Backups and Security</h2>
+    <div class="comment-block">
+      <pre># /etc/cron.d/ecm1240-backup
+17 3 * * * ecm sqlite3 /var/lib/ecm1240/energy.db ".backup '/var/lib/ecm1240/energy-backup.db'"</pre>
+    </div>
+    <p class="intro">
+      Use <code>.backup</code>, not <code>cp</code> — copying a file while it is being written
+      produces a corrupt snapshot. Then rsync the backup somewhere else.
+    </p>
+
+    <div class="verdict needs-work" style="margin-left:0;margin-right:0">
+      <div class="vicon">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
+      <div class="vtxt">
+        <div class="vtitle">Your energy database shows when your house is empty</div>
+        <div class="vsummary">
+          A per-circuit record sampled every five seconds reveals when people get up, when they go
+          to bed, when nobody is home and when you went away. There is <strong>no authentication
+          anywhere in this project</strong> — network placement is the only access control.
+          <strong>Do not port-forward it.</strong> Use a VPN if you want access from outside. The
+          backup is exactly as sensitive as the original.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CHECKLIST ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Commissioning Checklist</h2>
+    <div class="test-cases">
+      <h4>Before you call it done</h4>
+      <ul>
+        <li><strong>Every channel responds.</strong> Switch a known load on each circuit and watch the right card move.</li>
+        <li><strong>Whole-house is bigger than the sum of the branches,</strong> by roughly the load of circuits without CTs. If it is smaller, something is wrong.</li>
+        <li><strong>Calibration verified against a clamp meter</strong> at two load levels.</li>
+        <li><strong><code>python3 tools/verify_unit_identity.py</code></strong> — the fingerprints match the circuits you assigned.</li>
+        <li><strong>Reboot the host,</strong> then check the meters still map correctly. This is what catches unstable port names.</li>
+        <li><strong><code>curl -s localhost:8080/api/discards</code></strong> — a handful is fine, a flood means a guard is firing constantly.</li>
+        <li><strong>The database is on real storage,</strong> not the SD card.</li>
+        <li><strong>A backup has actually run,</strong> and you have restored it once to be sure.</li>
+        <li><strong>You wrote down which CT is on which breaker,</strong> somewhere you will find it in two years.</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>ecm1240-monitor · Deployment Guide · v1.0 · 2026-07-28 · MIT licence, no warranty</footer>
+
+</div>
+</body>
+</html>

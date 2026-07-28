@@ -172,6 +172,16 @@ See [`docs/SECURITY.md`](docs/SECURITY.md).
 
 ## Documentation
 
+**Start here** — both are illustrated HTML pages; open them in a browser
+(or read them on GitHub via [htmlpreview](https://htmlpreview.github.io/)):
+
+| | |
+|---|---|
+| [`docs/deployment-guide.html`](docs/deployment-guide.html) | **Wiring → install → calibration → live.** Safety rules, the traps that destroy meters, and a commissioning checklist |
+| [`docs/user-guide.html`](docs/user-guide.html) | **Using it day to day.** Dashboard and chart anatomy, what the insights mean, and how to swap in a charting library if you want one |
+
+Reference:
+
 | | |
 |---|---|
 | [`docs/INSTALL.md`](docs/INSTALL.md) | Permanent install, systemd units, backups |

@@ -86,14 +86,17 @@ meters:
     #   role   "mains" for the whole-house channel; omit for ordinary branches
     #   hidden true to keep recording but not display (a suspect CT)
     #   note   free text shown in the UI, e.g. why a channel is hidden
+    # These are EXAMPLES of the kind of thing people meter — replace them with
+    # whatever your CTs are actually on. The names are yours; nothing in the
+    # software cares what they say.
     channels:
-      ch1:  { name: "Mains",     volts: 240, role: "mains" }
-      ch2:  { name: "Circuit 2", volts: 240 }
-      aux1: { name: "Circuit 3", volts: 240 }
-      aux2: { name: "Circuit 4", volts: 120 }
-      aux3: { name: "Circuit 5", volts: 120 }
-      aux4: { name: "Circuit 6", volts: 120 }
-      aux5: { name: "Circuit 7", volts: 120 }
+      ch1:  { name: "Mains",        volts: 240, role: "mains" }
+      ch2:  { name: "Air Handler",  volts: 240 }
+      aux1: { name: "Water Heater", volts: 240 }
+      aux2: { name: "Kitchen",      volts: 120 }
+      aux3: { name: "Refrigerator", volts: 120 }
+      aux4: { name: "Lighting",     volts: 120 }
+      aux5: { name: "Garage",       volts: 120 }
 
   # A second meter is optional — delete this whole block if you have one meter.
   # - unit: 1
@@ -101,13 +104,13 @@ meters:
   #   baud: 19200
   #   calibration: {}
   #   channels:
-  #     ch1:  { name: "Circuit 8",  volts: 240 }
-  #     ch2:  { name: "Circuit 9",  volts: 240 }
-  #     aux1: { name: "Circuit 10", volts: 240 }
-  #     aux2: { name: "Circuit 11", volts: 120 }
-  #     aux3: { name: "Circuit 12", volts: 120 }
-  #     aux4: { name: "Circuit 13", volts: 120 }
-  #     aux5: { name: "Circuit 14", volts: 120 }
+  #     ch1:  { name: "Range / Oven",   volts: 240 }
+  #     ch2:  { name: "Dryer",          volts: 240 }
+  #     aux1: { name: "Washer",         volts: 120 }
+  #     aux2: { name: "Living Outlets", volts: 120 }
+  #     aux3: { name: "Bedroom Outlets",volts: 120 }
+  #     aux4: { name: "Office",         volts: 120 }
+  #     aux5: { name: "TV / Media",     volts: 120 }
 
 # ─── Unmetered load ──────────────────────────────────────────────────────────
 #

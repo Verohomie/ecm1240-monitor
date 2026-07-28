@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ecm1240-monitor — User Guide</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 14px; background: #f0f4f8; color: #1a202c; line-height: 1.55;
+}
+.page { max-width: 860px; margin: 0 auto; padding: 0 0 60px; }
+header {
+  background: #0d1b2e; color: #e2e8f0;
+  padding: 28px 36px 22px; border-radius: 0 0 8px 8px; margin-bottom: 28px;
+}
+header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; color: #fff; }
+header .meta { margin-top: 8px; font-size: 12px; color: #93c5fd; display: flex; flex-wrap: wrap; gap: 20px; }
+header .meta span { white-space: nowrap; }
+.verdict {
+  margin: 0 24px 24px; padding: 16px 22px; border-radius: 8px;
+  font-size: 15px; font-weight: 700; border-left: 6px solid;
+  display: flex; align-items: flex-start; gap: 14px;
+}
+.verdict.needs-work { background: #fff8ed; border-color: #e67e22; color: #7a3e00; }
+.verdict.pass       { background: #f0fdf4; border-color: #27ae60; color: #14532d; }
+.verdict.block      { background: #fff5f5; border-color: #c0392b; color: #7f1d1d; }
+.verdict .vicon { font-size: 22px; line-height: 1; }
+.verdict .vtxt { display: flex; flex-direction: column; gap: 4px; }
+.verdict .vtitle { font-size: 17px; }
+.verdict .vsummary { font-weight: 400; font-size: 14px; color: #555; }
+.note-box {
+  margin: 0 24px 20px; background: #f0fdf4; border: 1px solid #86efac;
+  border-radius: 8px; padding: 14px 18px; font-size: 13px; color: #14532d;
+}
+.note-box strong { display: block; margin-bottom: 4px; font-size: 13px; color: #166534; }
+.section { margin: 0 24px 32px; }
+.section h2 {
+  font-size: 15px; font-weight: 700; color: #0d1b2e;
+  padding-bottom: 8px; border-bottom: 2px solid #cbd5e1;
+  margin-bottom: 14px; letter-spacing: 0.2px;
+}
+.section p.intro { font-size: 13px; color: #475569; margin-bottom: 12px; }
+.section h3 { font-size: 13px; color: #1e3a5f; margin: 18px 0 8px; }
+.findings { width: 100%; border-collapse: collapse; font-size: 13px; }
+.findings thead tr { background: #1e3a5f; color: #e2e8f0; }
+.findings thead th { padding: 9px 12px; text-align: left; font-size: 12px; font-weight: 600; letter-spacing: 0.4px; white-space: nowrap; }
+.findings tbody tr:nth-child(even) { background: #f8fafc; }
+.findings tbody tr:nth-child(odd)  { background: #fff; }
+.findings tbody tr:hover { background: #eff6ff; }
+.findings td { padding: 10px 12px; vertical-align: top; border-bottom: 1px solid #e2e8f0; }
+.findings td:first-child { width: 100px; }
+.findings td code, .section code {
+  font-family: 'Courier New', monospace; font-size: 12px;
+  background: #f1f5f9; padding: 1px 4px; border-radius: 3px; color: #1e40af;
+}
+.findings.loc td:nth-child(2) { width: 175px; font-family: 'Courier New', monospace; font-size: 12px; color: #1e40af; }
+.badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; white-space: nowrap; }
+.badge.critical   { background: #fde8e8; color: #c0392b; border: 1px solid #f5a5a5; }
+.badge.warning    { background: #fef3e2; color: #d35400; border: 1px solid #f6c97a; }
+.badge.suggestion { background: #e8f4fd; color: #1a5f8a; border: 1px solid #90cdf4; }
+.badge.resolved   { background: #e8faf0; color: #27ae60; border: 1px solid #86efac; }
+.badge.positive   { background: #e8faf0; color: #27ae60; border: 1px solid #86efac; }
+tr.sev-critical   td { background: #fff5f5 !important; }
+tr.sev-warning    td { background: #fffbf0 !important; }
+tr.sev-suggestion td { background: #f0f7ff !important; }
+tr.sev-resolved   td { background: #f0fdf4 !important; }
+tr.sev-critical:hover   td { background: #ffe4e4 !important; }
+tr.sev-warning:hover    td { background: #fff3cc !important; }
+tr.sev-suggestion:hover td { background: #dbeafe !important; }
+tr.sev-resolved:hover   td { background: #dcfce7 !important; }
+.action-list { list-style: none; counter-reset: actions; }
+.action-list li {
+  counter-increment: actions; display: flex; gap: 12px; align-items: flex-start;
+  padding: 10px 14px; border-bottom: 1px solid #e2e8f0; font-size: 13px;
+}
+.action-list li:last-child { border-bottom: none; }
+.action-list li::before {
+  content: counter(actions); font-size: 11px; font-weight: 700; color: #fff;
+  background: #0d1b2e; min-width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px;
+}
+.action-list .al-badge { flex-shrink: 0; }
+.action-list .al-text { flex: 1; }
+.action-list code { font-family: 'Courier New', monospace; font-size: 12px; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; color: #1e40af; }
+.comment-block {
+  background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #0d1b2e;
+  border-radius: 0 6px 6px 0; padding: 14px 18px; margin-bottom: 16px; font-size: 13px;
+}
+.comment-block h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 8px; }
+.comment-block pre {
+  background: #1e293b; color: #e2e8f0; padding: 12px 16px; border-radius: 6px;
+  font-family: 'Courier New', monospace; font-size: 12px; overflow-x: auto;
+  white-space: pre-wrap; word-break: break-word; line-height: 1.6;
+}
+.test-cases { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px 18px; font-size: 13px; color: #334155; }
+.test-cases h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 10px; }
+.test-cases ul { padding-left: 18px; }
+.test-cases li { margin-bottom: 6px; }
+footer { text-align: center; font-size: 11px; color: #94a3b8; padding: 24px; border-top: 1px solid #e2e8f0; margin: 40px 24px 0; }
+.ico { vertical-align: -3px; color: #1e40af; margin-right: 6px; }
+.diagram-wrap { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin-bottom: 16px; }
+.cap { font-size: 12px; color: #64748b; margin-top: 8px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <h1>ecm1240-monitor — User Guide</h1>
+    <div class="meta">
+      <span>Version 1.0</span>
+      <span>Updated: 2026-07-28</span>
+      <span>Using the dashboard, the charts, and the insights</span>
+    </div>
+  </header>
+
+  <div class="note-box">
+    <strong>Every example here uses made-up data.</strong>
+    The circuit names are the ordinary things people meter — a fridge, a water heater, a washer.
+    The numbers come from the demo generator, not from anyone's home. Do the same when you post a
+    screenshot: run <code>tools/make_demo_data.py</code> rather than sharing your own, because a
+    real chart shows when your house is empty.
+  </div>
+
+  <!-- ── DASHBOARD ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>The Dashboard</h2>
+    <p class="intro">Three parts: the whole-house figure, a card per circuit, and any findings.</p>
+
+    <div class="diagram-wrap">
+      <svg viewBox="0 0 820 470" width="100%" role="img" aria-label="Dashboard anatomy">
+        <defs>
+          <marker id="cal" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#e67e22"/>
+          </marker>
+        </defs>
+        <rect x="0" y="0" width="560" height="470" rx="8" fill="#17212b"/>
+
+        <!-- header -->
+        <rect x="0" y="0" width="560" height="52" rx="8" fill="#1e2b38"/>
+        <text x="18" y="26" fill="#e8eef4" font-size="14" font-weight="bold" font-family="Arial">My House</text>
+        <text x="18" y="42" fill="#9fb2c4" font-size="11" font-family="Arial">live · updated 3s ago</text>
+
+        <!-- hero -->
+        <rect x="16" y="66" width="528" height="92" rx="10" fill="#1e2b38" stroke="#2c3d4d"/>
+        <text x="280" y="88" fill="#9fb2c4" font-size="10" text-anchor="middle" font-family="Arial" letter-spacing="1">WHOLE HOUSE</text>
+        <text x="280" y="122" fill="#e8eef4" font-size="30" font-weight="bold" text-anchor="middle" font-family="Arial">2.94 kW</text>
+        <text x="280" y="142" fill="#9fb2c4" font-size="11" text-anchor="middle" font-family="Arial">≈ $10.58/day at this rate · $0.15/kWh</text>
+
+        <!-- cards -->
+        <text x="18" y="180" fill="#9fb2c4" font-size="10" font-family="Arial" letter-spacing="1">CIRCUITS</text>
+        <g font-family="Arial">
+          <rect x="16" y="190" width="168" height="74" rx="8" fill="#1e2b38" stroke="#2c3d4d"/>
+          <text x="28" y="210" fill="#e8eef4" font-size="12" font-weight="bold">Air Handler</text>
+          <text x="28" y="234" fill="#e8eef4" font-size="19" font-weight="bold">2.65 kW</text>
+          <text x="28" y="249" fill="#9fb2c4" font-size="10">240 V</text>
+          <rect x="28" y="254" width="144" height="5" rx="2.5" fill="#243343"/>
+          <rect x="28" y="254" width="132" height="5" rx="2.5" fill="#4ea8de"/>
+
+          <rect x="196" y="190" width="168" height="74" rx="8" fill="#1e2b38" stroke="#2c3d4d"/>
+          <text x="208" y="210" fill="#e8eef4" font-size="12" font-weight="bold">Refrigerator</text>
+          <text x="208" y="234" fill="#e8eef4" font-size="19" font-weight="bold">148 W</text>
+          <text x="208" y="249" fill="#9fb2c4" font-size="10">120 V</text>
+          <rect x="208" y="254" width="144" height="5" rx="2.5" fill="#243343"/>
+          <rect x="208" y="254" width="16" height="5" rx="2.5" fill="#4ea8de"/>
+
+          <rect x="376" y="190" width="168" height="74" rx="8" fill="#1e2b38" stroke="#2c3d4d"/>
+          <text x="388" y="210" fill="#e8eef4" font-size="12" font-weight="bold">Water Heater</text>
+          <text x="388" y="234" fill="#e8eef4" font-size="19" font-weight="bold">6 W</text>
+          <text x="388" y="249" fill="#9fb2c4" font-size="10">240 V</text>
+          <rect x="388" y="254" width="144" height="5" rx="2.5" fill="#243343"/>
+          <rect x="388" y="254" width="3" height="5" rx="2.5" fill="#4ea8de"/>
+        </g>
+
+        <!-- insights -->
+        <text x="18" y="296" fill="#9fb2c4" font-size="10" font-family="Arial" letter-spacing="1">INSIGHTS</text>
+        <rect x="16" y="306" width="528" height="52" rx="8" fill="#1e2b38" stroke="#2c3d4d"/>
+        <rect x="16" y="306" width="4" height="52" fill="#e5624a"/>
+        <text x="32" y="326" fill="#e8eef4" font-size="12" font-weight="bold" font-family="Arial">Air Handler is short-cycling</text>
+        <text x="32" y="344" fill="#9fb2c4" font-size="11" font-family="Arial">7 runs shorter than 5 min in the last 24 h.</text>
+
+        <rect x="16" y="368" width="528" height="52" rx="8" fill="#1e2b38" stroke="#2c3d4d"/>
+        <rect x="16" y="368" width="4" height="52" fill="#4cc38a"/>
+        <text x="32" y="388" fill="#e8eef4" font-size="12" font-weight="bold" font-family="Arial">Refrigerator is cycling normally</text>
+        <text x="32" y="406" fill="#9fb2c4" font-size="11" font-family="Arial">36 runs in the last 24 h, typical run 22 min at 155 W.</text>
+
+        <!-- callouts -->
+        <g font-family="Arial" font-size="11" fill="#7a3e00">
+          <line x1="556" y1="112" x2="600" y2="100" stroke="#e67e22" stroke-width="1.6" marker-end="url(#cal)"/>
+          <text x="606" y="96" font-weight="bold">Whole house</text>
+          <text x="606" y="110" fill="#475569">Tap for a zoomable chart</text>
+
+          <line x1="556" y1="226" x2="600" y2="210" stroke="#e67e22" stroke-width="1.6" marker-end="url(#cal)"/>
+          <text x="606" y="206" font-weight="bold">One card per circuit</text>
+          <text x="606" y="220" fill="#475569">Bar = share of the</text>
+          <text x="606" y="233" fill="#475569">busiest circuit right now.</text>
+          <text x="606" y="248" fill="#475569">Tap any card to chart it.</text>
+
+          <line x1="556" y1="332" x2="600" y2="322" stroke="#e67e22" stroke-width="1.6" marker-end="url(#cal)"/>
+          <text x="606" y="318" font-weight="bold">Findings</text>
+          <text x="606" y="332" fill="#475569">Red = worth acting on.</text>
+          <text x="606" y="345" fill="#475569">Amber = keep an eye on.</text>
+          <text x="606" y="358" fill="#475569">Green = behaving normally.</text>
+        </g>
+      </svg>
+      <div class="cap">Dashboard anatomy. Circuit names come from your config file, not from the code.</div>
+    </div>
+
+    <table class="findings">
+      <thead><tr><th>What you see</th><th>What it means</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Whole house</strong></td>
+          <td>Your mains channel if you have a CT on the service. If you don't, it is the <em>sum of the metered circuits</em> instead, and the label changes to "Metered Total" — because a sum cannot see anything without a clamp on it.</td>
+        </tr>
+        <tr>
+          <td><strong>The cost line</strong></td>
+          <td>Current draw projected forward at your configured rate. It answers "if things stayed exactly like this". It is not a bill prediction.</td>
+        </tr>
+        <tr>
+          <td><strong>Circuit card</strong></td>
+          <td>Live watts on that circuit. The bar is its share of whichever circuit is busiest at that moment, so bars move around — it is a glance-comparison, not a percentage of the house.</td>
+        </tr>
+        <tr>
+          <td><strong>"hidden" tag</strong></td>
+          <td>A channel with <code>hidden: true</code> in your config. Still recorded, greyed out — useful for a CT you suspect but do not want to lose history on.</td>
+        </tr>
+        <tr>
+          <td><strong>"last reading Ns ago"</strong></td>
+          <td>Anything over a minute means the collector has stopped or a meter has gone quiet. This is the line that tells you the system is broken.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── CHART ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg>The Chart</h2>
+    <p class="intro">
+      Tap the whole-house figure or any circuit card. The chart is a real address
+      (<code>#/chart/0/aux1</code>), so Back and a touch back-swipe both work.
+    </p>
+
+    <div class="diagram-wrap">
+      <svg viewBox="0 0 820 430" width="100%" role="img" aria-label="Chart anatomy">
+        <defs>
+          <marker id="cal2" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#e67e22"/>
+          </marker>
+        </defs>
+        <rect x="0" y="0" width="540" height="430" rx="8" fill="#17212b"/>
+
+        <text x="18" y="28" fill="#e8eef4" font-size="15" font-weight="bold" font-family="Arial">Refrigerator</text>
+        <text x="522" y="28" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="end" font-family="Arial">148 W now</text>
+
+        <!-- range buttons -->
+        <g font-family="Arial" font-size="10">
+          <rect x="18" y="42" width="42" height="22" rx="5" fill="#1e2b38" stroke="#2c3d4d"/><text x="39" y="57" fill="#e8eef4" text-anchor="middle">1 h</text>
+          <rect x="66" y="42" width="42" height="22" rx="5" fill="#1e2b38" stroke="#2c3d4d"/><text x="87" y="57" fill="#e8eef4" text-anchor="middle">3 h</text>
+          <rect x="114" y="42" width="46" height="22" rx="5" fill="#4ea8de"/><text x="137" y="57" fill="#fff" text-anchor="middle" font-weight="bold">24 h</text>
+          <rect x="166" y="42" width="42" height="22" rx="5" fill="#1e2b38" stroke="#2c3d4d"/><text x="187" y="57" fill="#e8eef4" text-anchor="middle">7 d</text>
+          <rect x="214" y="42" width="74" height="22" rx="5" fill="#1e2b38" stroke="#2c3d4d"/><text x="251" y="57" fill="#e8eef4" text-anchor="middle">Reset zoom</text>
+        </g>
+
+        <!-- plot -->
+        <rect x="18" y="76" width="504" height="200" rx="7" fill="#1e2b38" stroke="#2c3d4d"/>
+        <g stroke="#2c3d4d" stroke-width="1">
+          <line x1="66" y1="106" x2="506" y2="106"/><line x1="66" y1="148" x2="506" y2="148"/>
+          <line x1="66" y1="190" x2="506" y2="190"/><line x1="66" y1="232" x2="506" y2="232"/>
+        </g>
+        <g font-family="Arial" font-size="9" fill="#9fb2c4" text-anchor="end">
+          <text x="60" y="110">180 W</text><text x="60" y="152">135 W</text>
+          <text x="60" y="194">90 W</text><text x="60" y="236">45 W</text>
+        </g>
+        <path d="M66,232 L96,232 L96,120 L140,120 L140,232 L180,232 L180,118 L226,118 L226,232 L266,232 L266,122 L312,122 L312,232 L352,232 L352,119 L398,119 L398,232 L440,232 L440,121 L486,121 L486,232 L506,232"
+              fill="none" stroke="#4ea8de" stroke-width="1.8"/>
+        <path d="M66,232 L96,232 L96,120 L140,120 L140,232 L180,232 L180,118 L226,118 L226,232 L266,232 L266,122 L312,122 L312,232 L352,232 L352,119 L398,119 L398,232 L440,232 L440,121 L486,121 L486,232 L506,232 L506,240 L66,240 Z"
+              fill="#4ea8de" opacity="0.15"/>
+        <rect x="226" y="96" width="126" height="146" fill="#4ea8de" opacity="0.22"/>
+        <g font-family="Arial" font-size="9" fill="#9fb2c4">
+          <text x="66" y="262">6 PM</text><text x="180" y="262">9 PM</text>
+          <text x="290" y="262">12 AM</text><text x="400" y="262">3 AM</text><text x="506" y="262" text-anchor="end">6 AM</text>
+        </g>
+
+        <!-- strip -->
+        <rect x="18" y="288" width="504" height="46" rx="5" fill="#243343" stroke="#2c3d4d"/>
+        <path d="M28,326 L48,300 L64,326 L84,302 L100,326 L120,299 L140,326 L162,301 L182,326 L204,300 L224,326 L246,303 L266,326 L288,300 L308,326 L330,301 L350,326 L372,302 L392,326 L414,300 L434,326 L456,301 L476,326 L498,302 L512,326"
+              fill="none" stroke="#9fb2c4" stroke-width="1" opacity="0.8"/>
+        <rect x="222" y="288" width="128" height="46" fill="#4ea8de" opacity="0.25"/>
+        <rect x="218" y="288" width="8" height="46" rx="2" fill="#4ea8de" opacity="0.9"/>
+        <rect x="346" y="288" width="8" height="46" rx="2" fill="#4ea8de" opacity="0.9"/>
+
+        <text x="18" y="356" fill="#9fb2c4" font-size="10" font-family="Arial">Showing 5.3 h — 9:41 PM to 3:02 AM · 20s resolution</text>
+        <g font-family="Arial" font-size="11">
+          <text x="18" y="384" fill="#e8eef4" font-weight="bold">155 W <tspan fill="#9fb2c4" font-weight="normal">average</tspan></text>
+          <text x="128" y="384" fill="#e8eef4" font-weight="bold">182 W <tspan fill="#9fb2c4" font-weight="normal">peak</tspan></text>
+          <text x="232" y="384" fill="#e8eef4" font-weight="bold">0.82 kWh <tspan fill="#9fb2c4" font-weight="normal">over 5.3 h</tspan></text>
+          <text x="382" y="384" fill="#e8eef4" font-weight="bold">$0.12 <tspan fill="#9fb2c4" font-weight="normal">estimated</tspan></text>
+        </g>
+
+        <!-- callouts -->
+        <g font-family="Arial" font-size="11" fill="#7a3e00">
+          <line x1="352" y1="150" x2="580" y2="120" stroke="#e67e22" stroke-width="1.6" marker-end="url(#cal2)"/>
+          <text x="586" y="116" font-weight="bold">Drag across to zoom</text>
+          <text x="586" y="130" fill="#475569">Release and it re-asks the</text>
+          <text x="586" y="143" fill="#475569">server for that window.</text>
+
+          <line x1="352" y1="311" x2="580" y2="290" stroke="#e67e22" stroke-width="1.6" marker-end="url(#cal2)"/>
+          <text x="586" y="286" font-weight="bold">Overview strip</text>
+          <text x="586" y="300" fill="#475569">The whole range. Drag the</text>
+          <text x="586" y="313" fill="#475569">blue block to pan, its</text>
+          <text x="586" y="326" fill="#475569">edges to resize.</text>
+
+          <line x1="300" y1="352" x2="580" y2="360" stroke="#e67e22" stroke-width="1.6" marker-end="url(#cal2)"/>
+          <text x="586" y="358" font-weight="bold">Resolution</text>
+          <text x="586" y="372" fill="#475569">How much real time each</text>
+          <text x="586" y="385" fill="#475569">plotted point covers.</text>
+        </g>
+      </svg>
+      <div class="cap">Chart anatomy. The blue block on the strip is the part of the range you are looking at.</div>
+    </div>
+
+    <table class="findings">
+      <thead><tr><th>Gesture</th><th>Does</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Drag across the chart</strong></td><td>Zoom into that span.</td></tr>
+        <tr><td><strong>Drag the strip's blue block</strong></td><td>Pan — same width of time, moved earlier or later.</td></tr>
+        <tr><td><strong>Drag the block's edges</strong></td><td>Widen or narrow the window.</td></tr>
+        <tr><td><strong>Scroll / pinch</strong></td><td>Zoom around the pointer.</td></tr>
+        <tr><td><strong>Reset zoom</strong></td><td>Back to the whole selected range. Only appears when zoomed.</td></tr>
+        <tr><td><strong>Back button / swipe</strong></td><td>Returns to the dashboard.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Why zooming actually shows more</h3>
+    <p class="intro">
+      This is the part worth understanding, because it is what makes the chart useful rather than
+      decorative. Most dashboards fetch a fixed number of points and then stretch them when you
+      zoom, so magnifying a smooth line just gives you a bigger smooth line. This one throws the
+      old data away and asks the server again for just the window you want.
+    </p>
+
+    <div class="diagram-wrap">
+      <svg viewBox="0 0 820 250" width="100%" role="img" aria-label="Zoom re-fetch">
+        <defs>
+          <marker id="ar3" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#1e40af"/>
+          </marker>
+        </defs>
+        <rect x="30" y="30" width="330" height="80" rx="8" fill="#0d1b2e"/>
+        <text x="195" y="55" fill="#e2e8f0" font-size="13" font-weight="bold" text-anchor="middle" font-family="Arial">24-hour view</text>
+        <text x="195" y="74" fill="#93c5fd" font-size="11" text-anchor="middle" font-family="Arial">900 points across 24 h</text>
+        <text x="195" y="92" fill="#27ae60" font-size="11" font-weight="bold" text-anchor="middle" font-family="Arial">each point = ~92 seconds averaged</text>
+
+        <line x1="364" y1="70" x2="452" y2="70" stroke="#1e40af" stroke-width="2.5" marker-end="url(#ar3)"/>
+        <text x="408" y="62" fill="#1e40af" font-size="11" font-weight="bold" text-anchor="middle" font-family="Arial">drag to zoom</text>
+
+        <rect x="460" y="30" width="330" height="80" rx="8" fill="#27ae60"/>
+        <text x="625" y="55" fill="#fff" font-size="13" font-weight="bold" text-anchor="middle" font-family="Arial">5-hour view</text>
+        <text x="625" y="74" fill="#e8faf0" font-size="11" text-anchor="middle" font-family="Arial">900 points across 5 h</text>
+        <text x="625" y="92" fill="#0d1b2e" font-size="11" font-weight="bold" text-anchor="middle" font-family="Arial">each point = ~20 seconds averaged</text>
+
+        <rect x="90" y="140" width="640" height="76" rx="8" fill="#1e3a5f"/>
+        <text x="410" y="164" fill="#e2e8f0" font-size="12" font-weight="bold" text-anchor="middle" font-family="Arial">Same 900 points on screen — but each one now covers 20 s instead of 92 s.</text>
+        <text x="410" y="186" fill="#93c5fd" font-size="11" text-anchor="middle" font-family="Arial">A compressor that switches on and off every few minutes is a smooth bump at 92 s.</text>
+        <text x="410" y="204" fill="#93c5fd" font-size="11" text-anchor="middle" font-family="Arial">At 20 s you see the actual square edges — and can tell a short cycle from a long one.</text>
+      </svg>
+    </div>
+    <p class="intro">
+      Practically: if something looks odd on a 24-hour view, zoom into it. The detail is in the
+      database the whole time — the chart just was not asking for it.
+    </p>
+  </div>
+
+  <!-- ── INSIGHTS ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/><path d="M9 21h6"/></svg>Insights</h2>
+    <p class="intro">
+      Rules that watch each circuit's behaviour and say something in plain language. They are
+      opt-in: nothing appears until you have generated <code>profiles.yaml</code> from your own
+      data, because the thresholds depend on your appliances.
+    </p>
+
+    <table class="findings">
+      <thead><tr><th>Kind</th><th>Use it for</th><th>What it watches</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="badge suggestion">cycling</span></td>
+          <td>Fridge, freezer, air handler, heat pump — anything with a compressor</td>
+          <td>Short-cycling (repeated brief runs, hard on a compressor), starts per hour, an unbroken run that has gone on too long, and duty cycle.</td>
+        </tr>
+        <tr>
+          <td><span class="badge suggestion">multistate</span></td>
+          <td>Variable-speed pumps, multi-speed fans</td>
+          <td>Reports the distinct power levels it found, and flags never switching off.</td>
+        </tr>
+        <tr>
+          <td><span class="badge suggestion">burst</span></td>
+          <td>Range, washer, dryer, outlets, workshop</td>
+          <td>Only a stuck-on state. Being idle for days is normal for a human-driven circuit, so silence is never reported as a fault.</td>
+        </tr>
+        <tr>
+          <td><span class="badge suggestion">always_on</span></td>
+          <td>Networking gear, a media rack, anything expected to hum along</td>
+          <td>The steady floor itself — flags it dropping (something lost power) or climbing (something new was added).</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Reading a card</h3>
+    <table class="findings">
+      <thead><tr><th>Colour</th><th>Means</th></tr></thead>
+      <tbody>
+        <tr class="sev-critical"><td><span class="badge critical">ALERT</span></td><td>Something is behaving in a way that usually indicates a fault. Worth acting on.</td></tr>
+        <tr class="sev-warning"><td><span class="badge warning">WATCH</span></td><td>Unusual but often explainable — a hot day, a party, a long wash. Worth knowing, not alarming.</td></tr>
+        <tr class="sev-suggestion"><td><span class="badge suggestion">LEARNING</span></td><td>Not enough history yet to judge drift. It says so rather than guessing.</td></tr>
+        <tr class="sev-resolved"><td><span class="badge positive">OK</span></td><td>Behaving as expected, with the evidence shown so you can sanity-check the rule.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="note-box">
+      <strong>The rules describe behaviour, not diagnosis.</strong>
+      "Short-cycling" means short runs happened, which is genuinely worth investigating. It does
+      not know whether that is a dirty filter, low refrigerant, or a party where the door kept
+      opening. Treat a card as a reason to go and look.
+    </div>
+  </div>
+
+  <!-- ── CHARTS: HOW / SWAP ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>The Charts — How They Work, and Swapping In a Library</h2>
+
+    <p class="intro">
+      The charts are hand-written SVG in <code>web/index.html</code>, with no charting library.
+      That is a deliberate choice with a real trade-off, so here is the reasoning, what you give
+      up, and exactly how to swap in a library if you would rather.
+    </p>
+
+    <h3>Why no charting library</h3>
+    <table class="findings">
+      <thead><tr><th>Reason</th><th>Detail</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Auditability</strong></td>
+          <td>The main one. This software runs on a machine inside your home and records when your house is occupied. A minified bundle is roughly 700 KB of unreadable JavaScript that nobody can meaningfully review, and you would be trusting it with that. The whole front end here is one file you can read.</td>
+        </tr>
+        <tr>
+          <td><strong>Size</strong></td>
+          <td>A vendored chart library is <em>larger than this entire project</em> — source, docs and history combined. That is a strange shape for a repository.</td>
+        </tr>
+        <tr>
+          <td><strong>Offline</strong></td>
+          <td>No CDN, so it works with the internet unplugged. (A vendored copy also achieves this — it is only a reason against loading from a CDN.)</td>
+        </tr>
+        <tr>
+          <td><strong>Licence hygiene</strong></td>
+          <td>Bundling third-party code means carrying its licence and notices correctly. Not hard, but it is real work and easy to get subtly wrong.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>What you give up — honestly</h3>
+    <table class="findings">
+      <thead><tr><th>Missing</th><th>Impact</th></tr></thead>
+      <tbody>
+        <tr class="sev-warning">
+          <td><strong>Crosshair / tooltip readout</strong></td>
+          <td>The clearest gap. You cannot hover a point and read its exact value and time. Average, peak and total are shown for the visible window instead. This is on the roadmap.</td>
+        </tr>
+        <tr class="sev-suggestion">
+          <td><strong>Animated transitions</strong></td>
+          <td>Zooming snaps rather than glides. Cosmetic.</td>
+        </tr>
+        <tr class="sev-suggestion">
+          <td><strong>Multi-series overlays</strong></td>
+          <td>One circuit per chart. Comparing two circuits, or overlaying a second axis (a thermostat setpoint, say), would need real work here whereas a library gives it to you.</td>
+        </tr>
+        <tr class="sev-suggestion">
+          <td><strong>Battle-tested edge cases</strong></td>
+          <td>A mature library has handled years of odd browsers and odd data. This is a few hundred lines that works well in current browsers.</td>
+        </tr>
+        <tr class="sev-resolved">
+          <td><span class="badge positive">NOT missing</span></td>
+          <td>Drag-to-zoom, pan, edge-resize, wheel/pinch zoom, and the re-fetch-at-higher-resolution behaviour are all implemented. Those were the point.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>How the chart is built</h3>
+    <p class="intro">All of it lives in <code>web/index.html</code>. Four moving parts:</p>
+    <table class="findings loc">
+      <thead><tr><th>Piece</th><th>Name</th><th>Job</th></tr></thead>
+      <tbody>
+        <tr><td>State</td><td>CH</td><td>Which circuit is open, the <code>base</code> range from the buttons, the <code>view</code> currently on screen, and the two datasets.</td></tr>
+        <tr><td>Fetch</td><td>loadOverview()<br>loadDetail()</td><td><code>overview</code> is the whole range at low resolution for the strip and only changes when you press a range button. <code>detail</code> is the visible window and is re-fetched on every zoom or pan. Requests carry a sequence number so a slow reply can never overwrite a newer one.</td></tr>
+        <tr><td>Draw</td><td>draw()</td><td>Builds the whole SVG as a string — gridlines, the line and fill path, axis labels, the strip and its selection block.</td></tr>
+        <tr><td>Input</td><td>wireInteractions()</td><td>Pointer events (one code path for mouse, touch and pen) for drag-select, wheel zoom, and dragging the strip block or its edges.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="comment-block">
+      <h4>The only API call the chart makes</h4>
+      <pre>GET /api/history?channel=aux3&amp;unit=0&amp;minutes=318&amp;end=1785259163&amp;points=900
+
+{ "channel": "aux3", "unit": 0, "bucket_s": 20,
+  "start": 1785240083, "end": 1785259163,
+  "points": [ {"ts": 1785240083, "w": 148.2}, ... ] }</pre>
+      <p style="margin-top:10px;margin-bottom:0">
+        <code>end</code> is what makes zooming work — it lets you ask for a window that does not
+        run up to now. <code>points</code> is how many buckets you want back; the server divides
+        the window by that and averages each bucket, so asking for more points over a smaller
+        window is exactly how you get finer resolution. <strong>Any chart library you drop in
+        talks to this same endpoint.</strong>
+      </p>
+    </div>
+
+    <h3>Swapping in a chart library</h3>
+    <p class="intro">
+      Entirely reasonable if you want tooltips and multi-series. The data layer does not change —
+      only <code>draw()</code> and <code>wireInteractions()</code> get replaced. Using Apache
+      ECharts as the example, since it handles zoom well:
+    </p>
+    <ul class="action-list">
+      <li>
+        <span class="al-badge"><span class="badge suggestion">1</span></span>
+        <span class="al-text"><strong>Vendor the library.</strong> Download <code>echarts.min.js</code> into <code>web/</code> and reference it locally — <code>&lt;script src="/echarts.min.js"&gt;&lt;/script&gt;</code>. <strong>Do not use a CDN:</strong> it breaks when your internet is down and it tells a third party every time you look at your own dashboard.</span>
+      </li>
+      <li>
+        <span class="al-badge"><span class="badge critical">2</span></span>
+        <span class="al-text"><strong>Handle the licence.</strong> ECharts is Apache-2.0, which is compatible with this project's MIT licence but has conditions: keep the copyright and licence headers intact, include the full Apache-2.0 text (as <code>LICENSE-APACHE-2.0</code>), and add a <code>NOTICE</code> file. Also add it to <code>CREDITS.md</code> and remove the "no JavaScript dependencies" claim from <code>README.md</code> and <code>CREDITS.md</code>, which will no longer be true.</span>
+      </li>
+      <li>
+        <span class="al-badge"><span class="badge suggestion">3</span></span>
+        <span class="al-text"><strong>Replace <code>draw()</code>.</strong> Initialise once per circuit and call <code>setOption()</code> with <code>CH.detail</code> mapped to <code>[ts*1000, w]</code> pairs. Add <code>dataZoom</code> with both an <code>inside</code> (scroll/pinch) and a <code>slider</code> (the strip) component, and a <code>tooltip</code> with <code>trigger: 'axis'</code> — that is the readout you were missing.</span>
+      </li>
+      <li>
+        <span class="al-badge"><span class="badge warning">4</span></span>
+        <span class="al-text"><strong>Keep the re-fetch.</strong> This is the part worth preserving. Listen for <code>dataZoom</code> events, convert the resulting percentage range back into timestamps, write them into <code>CH.view</code>, and call <code>loadDetail()</code>. Debounce it — a scroll-zoom fires continuously and you do not want a request per frame. Without this step the library will happily magnify the data already loaded and you will have swapped a working feature for a prettier version of nothing.</span>
+      </li>
+      <li>
+        <span class="al-badge"><span class="badge suggestion">5</span></span>
+        <span class="al-text"><strong>Rebuild rather than reuse when switching circuits</strong> if each circuit gets its own colour — reusing one instance across circuits tends to keep the old series' styling.</span>
+      </li>
+      <li>
+        <span class="al-badge"><span class="badge suggestion">6</span></span>
+        <span class="al-text"><strong>Watch the resolution trap.</strong> If you add any caching of history responses, key it on the <em>resolution</em> as well as the channel and window. Keying on channel and window alone means whoever asks first wins — a small request for a thumbnail gets handed to a chart that wanted a thousand points, and it silently draws at a fraction of the detail it asked for.</span>
+      </li>
+    </ul>
+
+    <div class="note-box">
+      <strong>Either choice is defensible.</strong>
+      The project ships dependency-free because that is the better default for software running
+      inside someone's home. If you want richer charts on your own install and you are comfortable
+      with a vendored bundle, the swap is contained: one drawing function, one event handler, and
+      the licence paperwork.
+    </div>
+  </div>
+
+  <!-- ── CONFIG ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Everyday Config Changes</h2>
+    <p class="intro">
+      Edit <code>config.yaml</code>, then restart: <code>sudo systemctl restart ecm1240-api</code>
+      (and the collector too, if you changed anything under <code>meters:</code>).
+    </p>
+    <table class="findings loc">
+      <thead><tr><th>Want to</th><th>Setting</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Rename a circuit</td><td>meters[].channels[].name</td><td>Takes effect on refresh. History is unaffected — names are labels, not keys.</td></tr>
+        <tr><td>Hide a suspect circuit</td><td>channels[].hidden: true</td><td>Keeps recording, greys the card. Add <code>note:</code> to explain why.</td></tr>
+        <tr><td>Update your rate</td><td>site.rate_per_kwh</td><td>Applies to all displayed costs immediately, including historical windows.</td></tr>
+        <tr><td>See it on other devices</td><td>api.bind</td><td><code>0.0.0.0</code> exposes it to your whole network with <strong>no password</strong>. Read <code>SECURITY.md</code> first. Never port-forward it.</td></tr>
+        <tr><td>Stop losing data to a big unmetered load</td><td>unmetered.max_watts</td><td>Raise above your largest circuit without a CT.</td></tr>
+        <tr><td>Turn on the daily email</td><td>digest.enabled</td><td>Needs <code>RESEND_API_KEY</code> in the environment, never in the config file.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── FAQ ── -->
+  <div class="section">
+    <h2><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>Questions People Ask</h2>
+    <table class="findings">
+      <thead><tr><th>Question</th><th>Answer</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Why don't the circuits add up to the whole house?</strong></td>
+          <td>They shouldn't. The mains sees everything; the circuits only see what has a clamp on it. The difference is your unmetered load. If the circuits add up to <em>more</em> than the mains, that is a real problem — see <code>CALIBRATION.md</code>.</td>
+        </tr>
+        <tr>
+          <td><strong>Why does a channel read a few watts when everything is off?</strong></td>
+          <td>Normal at the bottom of a CT's range. If several idle channels on one meter drift together, that is shared noise rather than real load — don't add those up and treat the total as real.</td>
+        </tr>
+        <tr>
+          <td><strong>Where do watts come from? The meter doesn't send them.</strong></td>
+          <td>Correct — it sends a cumulative energy counter. The software divides the change in that counter by the change in the meter's own clock. That's why two packets are always needed before any reading appears, and why a brief oddity right after a data gap is a timing artifact rather than a real spike.</td>
+        </tr>
+        <tr>
+          <td><strong>Can I add more circuits later?</strong></td>
+          <td>Yes. Add the CT, add the channel to your config, restart. History for existing channels is untouched.</td>
+        </tr>
+        <tr>
+          <td><strong>How much disk does this use?</strong></td>
+          <td>Roughly 1 GB per meter per year at the default cadence. Trivial for a drive, fatal for an SD card — which is why the database belongs on real storage.</td>
+        </tr>
+        <tr>
+          <td><strong>Can I see it from work?</strong></td>
+          <td>Use a VPN. Do not port-forward it — there is no authentication, and the data shows when your house is empty.</td>
+        </tr>
+        <tr>
+          <td><strong>Insights say nothing.</strong></td>
+          <td>They need <code>profiles.yaml</code>, generated from your own data after a few days. There are no built-in thresholds because someone else's would produce confident nonsense about your appliances.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>ecm1240-monitor · User Guide · v1.0 · 2026-07-28 · all figures are demo data</footer>
+
+</div>
+</body>
+</html>

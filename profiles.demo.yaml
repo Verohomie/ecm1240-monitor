@@ -1,7 +1,7 @@
 # ── Appliance profiles ───────────────────────────────────────────
 #
 # GENERATED from your own recorded data by tools/suggest_profiles.py
-# 2026-07-28 13:26 — review before relying on it.
+# 2026-07-28 14:43 — review before relying on it.
 #
 # The names come from your config; the numbers come from the data.
 # Nothing here knows what your appliances ARE — only how they behave.
@@ -38,10 +38,10 @@ profiles:
 
   - unit: 0
     ch: aux2
-    name: "Workshop"
+    name: "Garage"
     kind: cycling
-    on: 81
-    off: 58
+    on: 85
+    off: 61
     min_dur: 120
     short_run_s: 300
     starts_per_h: 4
@@ -66,8 +66,8 @@ profiles:
     ch: aux4
     name: "Lighting"
     kind: cycling
-    on: 63
-    off: 45
+    on: 66
+    off: 47
     min_dur: 120
     short_run_s: 300
     starts_per_h: 4
@@ -77,10 +77,10 @@ profiles:
 
   - unit: 1
     ch: ch1
-    name: "Range"
+    name: "Range / Oven"
     kind: cycling
-    on: 652
-    off: 436
+    on: 691
+    off: 462
     min_dur: 120
     short_run_s: 300
     starts_per_h: 4
@@ -99,7 +99,7 @@ profiles:
 
   - unit: 1
     ch: aux1
-    name: "Laundry"
+    name: "Washer / Dryer"
     kind: cycling
     on: 528
     off: 353
@@ -112,10 +112,10 @@ profiles:
 
   - unit: 1
     ch: aux2
-    name: "Outlets A"
+    name: "Living Outlets"
     kind: cycling
-    on: 112
-    off: 85
+    on: 115
+    off: 87
     min_dur: 120
     short_run_s: 300
     starts_per_h: 4
@@ -125,10 +125,10 @@ profiles:
 
   - unit: 1
     ch: aux3
-    name: "Outlets B"
+    name: "Bedroom Outlets"
     kind: cycling
-    on: 69
-    off: 55
+    on: 71
+    off: 56
     min_dur: 120
     short_run_s: 300
     starts_per_h: 4
@@ -138,10 +138,10 @@ profiles:
 
   - unit: 1
     ch: aux5
-    name: "Media"
+    name: "TV / Media"
     kind: cycling
-    on: 79
-    off: 65
+    on: 77
+    off: 63
     min_dur: 120
     short_run_s: 300
     starts_per_h: 4

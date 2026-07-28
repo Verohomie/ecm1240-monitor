@@ -30,7 +30,7 @@ meters:
       ch1:  { name: "Mains",        volts: 240, role: "mains" }
       ch2:  { name: "Pump",         volts: 240 }
       aux1: { name: "Air Handler",  volts: 240 }
-      aux2: { name: "Workshop",     volts: 120 }
+      aux2: { name: "Garage",       volts: 120 }
       aux3: { name: "Refrigerator", volts: 120 }
       aux4: { name: "Lighting",     volts: 120 }
       aux5: { name: "Equipment",    volts: 120 }
@@ -38,13 +38,13 @@ meters:
   - unit: 1
     port: "demo://no-hardware-2"
     channels:
-      ch1:  { name: "Range",        volts: 240 }
+      ch1:  { name: "Range / Oven", volts: 240 }
       ch2:  { name: "Water Heater", volts: 240 }
-      aux1: { name: "Laundry",      volts: 240 }
-      aux2: { name: "Outlets A",    volts: 120 }
-      aux3: { name: "Outlets B",    volts: 120 }
-      aux4: { name: "Study",        volts: 120 }
-      aux5: { name: "Media",        volts: 120 }
+      aux1: { name: "Washer / Dryer", volts: 240 }
+      aux2: { name: "Living Outlets",  volts: 120 }
+      aux3: { name: "Bedroom Outlets", volts: 120 }
+      aux4: { name: "Office",       volts: 120 }
+      aux5: { name: "TV / Media",   volts: 120 }
 
 unmetered:
   max_watts: 20000
