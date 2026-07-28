@@ -11,6 +11,9 @@ Open items for ecm1240-monitor.
 - [ ] **Let the dashboard show two meters as one house.** Right now every
       circuit is listed flat; grouping by meter or by room would help anyone
       with fourteen channels.
+- [ ] **Add a hover/touch readout on the chart** showing the value at the
+      pointer. Zoom and pan are in; a crosshair with a figure is the obvious
+      next step.
 - [ ] **Add a `--once` mode to the collector** so people can confirm wiring
       works without leaving a service running.
 - [ ] **Improve `suggest_profiles.py` for multistate loads.** It finds the
@@ -33,3 +36,4 @@ Open items for ecm1240-monitor.
 - [x] Demo mode — full stack runnable with no hardware (2026-07-28)
 - [x] Dual-meter test using pseudo-terminals (2026-07-28)
 - [x] Install, security, calibration and troubleshooting docs (2026-07-28)
+- [x] Drag-to-zoom charts that re-fetch at full resolution, in dependency-free SVG (2026-07-28)

@@ -42,6 +42,26 @@ Open <http://127.0.0.1:8080/>. That is the whole application running on
 synthesised data — no meter, no panel, no wiring. Every screenshot in this
 project comes from that demo, never from a real home.
 
+## The dashboard
+
+Tap the whole-house figure, or any circuit, for a chart you can actually
+explore:
+
+- **Drag across the chart to zoom.** Drag the strip underneath to pan, or its
+  edges to resize. Scroll to zoom around the cursor. Touch, trackpad and mouse
+  all work.
+- **Zooming re-asks the API for that window at full resolution** rather than
+  magnifying what was already loaded. Pull one evening open on a 24-hour view
+  and the buckets go from ~90 seconds to ~20 — you see the real shape of a
+  compressor cycle instead of a smoothed average.
+- **Charts are a real address** (`#/chart/0/aux1`), so the browser Back button
+  and a touch back-swipe both work.
+
+All of it is **hand-written SVG with no JavaScript dependencies** — no charting
+library, no framework, no CDN. The whole front end is one readable file, which
+matters for software that runs on your own network and reads your household's
+activity. It also works with the internet unplugged.
+
 ## What you need
 
 | | |
