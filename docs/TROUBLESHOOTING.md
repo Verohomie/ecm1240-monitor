@@ -1,10 +1,18 @@
 # Troubleshooting
 
+> [!IMPORTANT]
+> **Start here: a silent meter is usually not a broken meter.**
+> An ECM-1240 with real-time mode switched off never sends a packet, but still
+> answers a direct poll. It is indistinguishable from dead hardware, and it is
+> the most common problem people hit. Two commands rule it out — see the first
+> section below before doing anything else.
+
 ## The meter looks completely dead
 
 **Check this before you suspect the hardware.** An ECM-1240 with real-time mode
 switched off is totally silent on the line — no packets, ever — but it is alive
-and will answer a direct poll. It looks identical to a dead board.
+and will answer a direct poll. It looks identical to a dead board. People have
+replaced perfectly good meters over this.
 
 ```bash
 python3 tools/ecm_poll.py /dev/ttyUSB0 -v      # does it answer a poll?

@@ -26,6 +26,31 @@ leaving a lot of working hardware with nowhere to send its data.
                                 └──────────────────────────────┘
 ```
 
+> [!IMPORTANT]
+> ### Meter looks dead? It probably isn't.
+>
+> **This is the single most common problem with an ECM-1240, and it is not a
+> fault.** A meter with real-time mode switched off is *completely silent* — no
+> packets, ever — but it is alive and will still answer a direct poll. It looks
+> exactly like a dead board, and people replace working hardware over it.
+>
+> Check before you suspect anything:
+>
+> ```bash
+> python3 tools/ecm_poll.py /dev/ttyUSB0 -v      # does it answer a poll?
+> ```
+>
+> If it answers, real-time mode is off. Switch streaming back on:
+>
+> ```bash
+> python3 tools/ecm_realtime.py /dev/ttyUSB0 --on
+> ```
+>
+> If it does *not* answer a poll either, see
+> [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — check the **12 VAC**
+> supply first, then the cable, then whether another program is holding the
+> serial port.
+
 ## Try it with no hardware
 
 ```bash

@@ -335,6 +335,24 @@ python3 -m ecm1240.api --config config.demo.yaml</pre>
       <pre>ls -l /dev/serial/by-path/          # what did the adapters enumerate as?
 python3 tools/ecm_sniff.py /dev/ttyUSB0</pre>
     </div>
+
+    <div class="verdict needs-work" style="margin-left:0;margin-right:0">
+      <div class="vicon">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>
+      </div>
+      <div class="vtxt">
+        <div class="vtitle">Nothing at all? Do NOT assume the meter is dead</div>
+        <div class="vsummary">
+          <strong>This is the most common problem with an ECM-1240, and it is not a fault.</strong>
+          A meter with real-time mode switched off never sends a packet — but it is alive and will
+          still answer a direct poll. It is indistinguishable from a dead board, and people have
+          replaced perfectly good meters over it. Two commands rule it out:
+          <div class="comment-block" style="margin:10px 0 0;background:#fffdf7"><pre>python3 tools/ecm_poll.py /dev/ttyUSB0 -v          # does it answer a poll?
+python3 tools/ecm_realtime.py /dev/ttyUSB0 --on   # if yes, switch streaming back on</pre></div>
+        </div>
+      </div>
+    </div>
     <p class="intro">
       You should see a line per packet with volts, amps and derived watts. If you see nothing at
       all, work through this before suspecting the hardware:
@@ -345,11 +363,9 @@ python3 tools/ecm_sniff.py /dev/ttyUSB0</pre>
         <tr class="sev-warning">
           <td><strong>Total silence</strong></td>
           <td>
-            <strong>The single most common false alarm.</strong> A meter with real-time mode
-            switched off is completely silent but perfectly alive — it looks exactly like a dead
-            board. Test it:
-            <div class="comment-block" style="margin:8px 0 0"><pre>python3 tools/ecm_poll.py /dev/ttyUSB0 -v      # does it answer a poll?
-python3 tools/ecm_realtime.py /dev/ttyUSB0 --on   # if yes, switch streaming back on</pre></div>
+            Real-time mode is off — see the banner above. If a poll gets no answer either, check
+            the <strong>12 VAC</strong> supply, then the cable, then whether another program is
+            holding the serial port.
           </td>
         </tr>
         <tr class="sev-suggestion">
