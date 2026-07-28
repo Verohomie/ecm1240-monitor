@@ -11,6 +11,17 @@ Built because the ECM-1240 is discontinued and every cloud service that once
 consumed it — Smart Energy Groups, PlotWatt, MyEnerSave, WattzOn — is dead,
 leaving a lot of working hardware with nowhere to send its data.
 
+<p align="center">
+  <img src="docs/images/dashboard.png" alt="The dashboard: whole-house total, a card per circuit, and appliance-health findings" width="620">
+</p>
+
+<p align="center">
+  <img src="docs/images/chart-zoom.png" alt="Drag-to-zoom chart showing 20-second resolution after zooming in" width="820">
+  <br><em>Drag across any chart to zoom — it re-asks the API for that window at full resolution.</em>
+</p>
+
+*(All screenshots are from the built-in demo generator, not a real home.)*
+
 ```
    breaker panel                Raspberry Pi (or any Linux box)
    ┌────────────┐               ┌──────────────────────────────┐
