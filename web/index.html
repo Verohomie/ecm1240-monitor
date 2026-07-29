@@ -171,12 +171,17 @@ const API = location.origin.startsWith('http') ? location.origin : 'http://127.0
 const RANGES = [
   { label: '1 h',  minutes: 60 },
   { label: '3 h',  minutes: 180 },
+  { label: '6 h',  minutes: 360 },
   { label: '12 h', minutes: 720 },
   { label: '24 h', minutes: 1440 },
   { label: '3 d',  minutes: 4320 },
   { label: '7 d',  minutes: 10080 },
   { label: '30 d', minutes: 43200 },
 ];
+/* Look a default range up by its LABEL, never by its position — inserting a
+   range would otherwise move every default along one, silently. */
+const rangeByLabel = label => Math.max(RANGES.findIndex(r => r.label === label), 0);
+const DEFAULT_RANGE = rangeByLabel('24 h');
 const MIN_SPAN_S = 120;          // do not let a zoom go below two minutes
 
 let CFG = null;
@@ -334,7 +339,7 @@ async function tick() {
    magnified average. That is the whole point of the exercise; the drawing is
    incidental. */
 const CH = {
-  open: false, ch: null, rangeIdx: 3,
+  open: false, ch: null, rangeIdx: DEFAULT_RANGE,
   base: null,      // {t0,t1} the range button's window
   view: null,      // {t0,t1} what is on screen
   overview: [], detail: [], loading: false, reqSeq: 0,
