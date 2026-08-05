@@ -37,3 +37,10 @@ Open items for ecm1240-monitor.
 - [x] Dual-meter test using pseudo-terminals (2026-07-28)
 - [x] Install, security, calibration and troubleshooting docs (2026-07-28)
 - [x] Drag-to-zoom charts that re-fetch at full resolution, in dependency-free SVG (2026-07-28)
+- [x] Time-aligned snapshot (`/api/snapshot`), so two free-running meters can be
+      compared without phantom spikes in the unmetered figure (2026-08-04)
+- [x] Service-voltage check, with readings below `voltage.dead_below` excluded —
+      a meter that has lost its own supply is not a brownout (2026-08-04)
+- [x] Unmetered-load check: judged on the median and the quietest tenth, so an
+      occasional uncounted load cannot trip it and a CT that has come loose
+      cannot hide (2026-08-04)
