@@ -71,6 +71,7 @@ SNAP_MAX_SKEW_S = 20         # meters further apart than this: one is stalling
 
 app = Flask(__name__, static_folder=None)
 CFG = None                  # populated by main() / create_app()
+_HAS_DSECS = None           # probed once on first use; see has_dsecs()
 
 
 def _paths():
@@ -92,6 +93,23 @@ def db():
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA query_only=ON")
     return g.db
+
+
+def has_dsecs():
+    """Whether the store carries the per-reading interval column yet.
+
+    The API opens the database read-only, so it cannot add the column itself —
+    the collector does that on its next restart. Between upgrading the code and
+    restarting the collector, and for any database written by an older release,
+    the column is simply absent, and SQL naming it would fail. Checked once per
+    process (a column never disappears) and falls back to the plain average,
+    which is what the older store's equal-length readings meant anyway.
+    """
+    global _HAS_DSECS
+    if _HAS_DSECS is None:
+        _HAS_DSECS = any(r[1] == "dsecs"
+                         for r in db().execute("PRAGMA table_info(readings)"))
+    return _HAS_DSECS
 
 
 @app.teardown_appcontext
@@ -170,6 +188,10 @@ def api_config():
         # duplicated in the page, so the screen and the verdict cannot disagree
         # about what counts as noise.
         unmetered_noise_high_w=CFG.get("unmetered", {}).get("noise_high_watts", 100),
+        # The service-voltage band, so a voltage chart can draw the in-range
+        # region without hardcoding a 120 V service. Same numbers the insights
+        # rule judges against — served, not duplicated.
+        voltage=CFG.get("voltage", {"low": 114.0, "high": 126.0, "dead_below": 90.0}),
         channels=cfgmod.channel_list(CFG),
     )
 
@@ -267,10 +289,17 @@ def now():
 def _intervals(rows):
     """Each row's interval length, and the cadence to assume for the first one.
 
-    Derived from the data rather than configured: an ECM-1240 can be set to
-    report anywhere from about one second to a minute, and the right window
-    depends on which. The median observed gap is used for the oldest row, whose
-    own predecessor was not read.
+    A row's own `dsecs` is used when it has one: that is the meter's seconds
+    counter, the exact number its watts were divided by. The gap between
+    timestamps is the fallback, for rows stored before the column existed. The
+    two are not interchangeable — a timestamp gap also contains USB/serial
+    latency, and the ECM-1240 departs from its own cadence precisely when a large
+    load switches, so the fallback mis-sizes the readings that matter most.
+
+    The cadence itself is derived from the data rather than configured: an
+    ECM-1240 can be set to report anywhere from about one second to a minute, and
+    the right window depends on which. The median observed gap stands in for the
+    oldest row, whose own predecessor was not read.
     """
     gaps = [b["ts"] - a["ts"] for a, b in zip(rows, rows[1:])
             if 0 < b["ts"] - a["ts"] <= SNAP_MAX_INTERVAL_S]
@@ -278,9 +307,9 @@ def _intervals(rows):
     out = []
     prev = None
     for r in rows:
-        span = nominal if prev is None else min(max(r["ts"] - prev, 1),
-                                                SNAP_MAX_INTERVAL_S)
-        out.append(span)
+        span = r["dsecs"] if "dsecs" in r.keys() and r["dsecs"] else (
+            nominal if prev is None else r["ts"] - prev)
+        out.append(min(max(span, 1), SNAP_MAX_INTERVAL_S))
         prev = r["ts"]
     return out, nominal
 
@@ -423,13 +452,51 @@ def snapshot():
 
 @app.get("/api/history")
 def history():
-    """Time-bucketed watts for one channel of one meter (agg=avg|max)."""
+    """Time-bucketed series for one channel of one meter (agg=avg|max).
+
+    `channel` is normally a watt channel. The pseudo-channel 'volts' returns the
+    readings table's own line-voltage column instead, so a dashboard can draw
+    voltage history and read two meters against each other.
+
+    Samples below voltage.dead_below are dropped from the bucket rather than
+    averaged in: a meter that has lost its own supply reads toward zero, and that
+    is a dead meter, not a brownout — it must not drag the line down. A bucket
+    where every sample was dead comes back null, i.e. an honest gap.
+    """
     channel = request.args.get("channel", "ch1")
-    if channel not in CHANNELS:
-        return jsonify(error=f"bad channel; pick one of {list(CHANNELS)}"), 400
     agg = request.args.get("agg", "avg")
     if agg not in ("avg", "max"):
         return jsonify(error="agg must be avg or max"), 400
+    dead_below = float(CFG.get("voltage", {}).get("dead_below", 90.0))
+    if channel == "volts":
+        col = f"CASE WHEN volts >= {dead_below} THEN volts END"
+    elif channel in CHANNELS:
+        col = channel
+    else:
+        return jsonify(
+            error=f"bad channel; pick one of {list(CHANNELS) + ['volts']}"), 400
+    if agg == "max":
+        value_expr = f"MAX({col})"
+    elif not has_dsecs():
+        value_expr = f"AVG({col})"     # pre-upgrade store; see has_dsecs()
+    else:
+        # ENERGY-weighted, not reading-weighted. Each row's watts are the average
+        # over the dsecs seconds it covers, so a bucket's true mean power is the
+        # energy in it divided by the time: SUM(w*dsecs)/SUM(dsecs). A plain AVG()
+        # gives a short reading the same say as a full-length one, and an
+        # ECM-1240 emits exactly those short readings at the instant a large load
+        # switches — which puts a spike on the chart at every compressor start,
+        # sized by how far off cadence the meter slipped rather than by any load.
+        #
+        # Rows predating the dsecs column hold NULL and fall back to the nominal
+        # cadence. Every weight is then equal, which is arithmetically identical
+        # to the old AVG(), so history stored before the upgrade reads exactly as
+        # it always did. The constant's VALUE only matters in the single bucket
+        # that straddles the changeover, where it sets the blend between old and
+        # new rows; a bucket either side is unaffected by it.
+        w = f"COALESCE(dsecs, {SNAP_DEFAULT_INTERVAL_S})"
+        value_expr = (f"SUM(({col}) * {w}) /"
+                      f" NULLIF(SUM(CASE WHEN ({col}) IS NOT NULL THEN {w} END), 0)")
     unit = request.args.get("unit", 0, type=int)
     minutes = max(request.args.get("minutes", 180, type=int), 1)
     points = min(max(request.args.get("points", 180, type=int), 1), 1000)
@@ -439,10 +506,10 @@ def history():
     end = request.args.get("end", type=int) or int(time.time())
     since = end - minutes * 60
     span = max(minutes * 60 // points, 1)          # seconds per bucket
-    # channel and agg are whitelisted above; span is an int -> safe to inline.
+    # channel and agg are whitelisted above; span and dead_below are numeric ->
+    # safe to inline.
     rows = db().execute(
-        f"SELECT (ts/{span})*{span} AS b,"
-        f" {'MAX' if agg == 'max' else 'AVG'}({channel}) AS w"
+        f"SELECT (ts/{span})*{span} AS b, {value_expr} AS w"
         " FROM readings WHERE unit_id = ? AND ts >= ? AND ts <= ?"
         " GROUP BY b ORDER BY b", (unit, since, end)).fetchall()
     # w is NULL when every sample in a bucket was scrubbed (e.g. a mains

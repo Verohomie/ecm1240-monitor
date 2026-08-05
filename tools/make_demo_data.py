@@ -111,7 +111,10 @@ def generate(db_path, days, meters):
 
         for unit in meters:
             vals = {"ch1": mains, **b0} if unit == 0 else b1
-            row = {"ts": ts, "unit_id": unit,
+            # dsecs is what a real meter reports: how many seconds this row's
+            # watts are the average over. The generator is on a perfect
+            # metronome, so it is always STEP_S here — a real one wanders.
+            row = {"ts": ts, "unit_id": unit, "dsecs": STEP_S,
                    "volts": round(random.uniform(119.2, 121.4), 1)}
             row.update({ch: round(vals.get(ch, 0.0), 1) for ch in CHANNELS})
             rows.append(row)
@@ -131,9 +134,9 @@ def _flush(db, rows):
         return
     db.executemany(
         "INSERT OR REPLACE INTO readings"
-        " (ts,unit_id,volts,ch1,ch2,aux1,aux2,aux3,aux4,aux5)"
-        " VALUES (:ts,:unit_id,:volts,:ch1,:ch2,:aux1,:aux2,:aux3,:aux4,:aux5)",
-        rows)
+        " (ts,unit_id,volts,ch1,ch2,aux1,aux2,aux3,aux4,aux5,dsecs)"
+        " VALUES (:ts,:unit_id,:volts,:ch1,:ch2,:aux1,:aux2,:aux3,:aux4,:aux5,"
+        ":dsecs)", rows)
 
 
 def main():

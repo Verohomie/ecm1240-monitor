@@ -121,12 +121,31 @@ class SqliteStore:
     reader process (the API) run concurrently without blocking the writer.
     """
 
+    # `dsecs` is how many seconds of energy this row's watts are the average OF:
+    # the meter's own seconds-counter delta, which is the number watts() divided
+    # by. It is NOT the gap between timestamps — ts is stamped when the packet
+    # lands, so it also contains USB/serial latency. The two differ most where it
+    # matters least forgivably: an ECM-1240 slips to a short interval right at the
+    # moment a large load switches, and a consumer that assumes a fixed cadence
+    # then over-weights exactly that reading. Storing it means no consumer has to
+    # guess.
     SCHEMA = (
         "CREATE TABLE IF NOT EXISTS readings ("
         " ts INTEGER NOT NULL, unit_id INTEGER NOT NULL, volts REAL,"
         " ch1 REAL, ch2 REAL, aux1 REAL, aux2 REAL, aux3 REAL, aux4 REAL, aux5 REAL,"
+        " dsecs INTEGER,"
         " PRIMARY KEY (ts, unit_id)) WITHOUT ROWID"
     )  # PK(ts,unit_id) doubles as the history-range index (ts leads)
+
+    # Columns added after the first release. Applied on open, guarded by a
+    # PRAGMA check so it is idempotent: an existing database picks the column up
+    # on the next restart and keeps every row it already has. Rows written before
+    # the column existed keep NULL there, and readers fall back to the nominal
+    # cadence for those — which reproduces the old plain-average result exactly,
+    # rather than silently re-weighting history that cannot be re-derived.
+    MIGRATIONS = (
+        ("readings", "dsecs", "ALTER TABLE readings ADD COLUMN dsecs INTEGER"),
+    )
 
     # Audit log of intervals the consistency guards threw out, so the app can
     # surface how often each rule fires. The pattern over time is what tells
@@ -185,6 +204,11 @@ class SqliteStore:
             db.execute(self.SCHEMA)
             db.execute(self.SCHEMA_DISCARDS)
             db.execute(self.SCHEMA_QUARANTINE)
+            for table, col, ddl in self.MIGRATIONS:
+                have = {r[1] for r in db.execute(f"PRAGMA table_info({table})")}
+                if col not in have:
+                    db.execute(ddl)
+                    log(f"schema: added {table}.{col}")
             db.commit()
             log(f"sqlite store open: {self.db_path} "
                 f"(WAL, flush every {self.flush_interval}s)")
@@ -209,9 +233,9 @@ class SqliteStore:
                 if batch:
                     db.executemany(
                         "INSERT OR REPLACE INTO readings"
-                        " (ts,unit_id,volts,ch1,ch2,aux1,aux2,aux3,aux4,aux5)"
+                        " (ts,unit_id,volts,ch1,ch2,aux1,aux2,aux3,aux4,aux5,dsecs)"
                         " VALUES (:ts,:unit_id,:volts,:ch1,:ch2,:aux1,:aux2,:aux3,"
-                        ":aux4,:aux5)", batch)
+                        ":aux4,:aux5,:dsecs)", batch)
                 if dbatch:
                     db.executemany(
                         "INSERT INTO discards (ts,unit_id,reason,ch1_w,limit_w)"
@@ -470,7 +494,7 @@ def main():
             for ch in CHANNELS:
                 w[ch] *= cal.get(ch, 1.0)
             reading = {"ts": round(time.time()), "unit_id": unit,
-                       "volts": round(d["volts"], 1)}
+                       "volts": round(d["volts"], 1), "dsecs": dsecs}
             reading.update({ch: round(w[ch], 1) for ch in CHANNELS})
             reading["ch1"] = None                 # mains untrustworthy this instant
             store.add(reading)                    # live feed NOT broadcast -> holds last
@@ -485,7 +509,7 @@ def main():
         feed.broadcast("E," + ",".join(
             [str(unit), str(round(d["volts"] * 10))] + [str(round(v)) for v in vals]))
         reading = {"ts": round(time.time()), "unit_id": unit,
-                   "volts": round(d["volts"], 1)}
+                   "volts": round(d["volts"], 1), "dsecs": dsecs}
         reading.update({ch: round(w[ch], 1) for ch in CHANNELS})
         store.add(reading)
         log(f"unit {unit}: {d['volts']:.1f}V  " +

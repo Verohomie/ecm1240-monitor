@@ -160,6 +160,13 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
     <h2>Circuits</h2>
     <div class="grid" id="grid"></div>
 
+    <!-- One row per meter, showing what it reads on its own supply. Each is a
+         door into that meter's voltage history: with two meters on the same
+         service the pair should track, and one drifting away from the other is
+         the earliest sign that a meter's voltage electronics are failing. -->
+    <h2 id="voltH" hidden>Line voltage</h2>
+    <div class="grid" id="volts"></div>
+
     <h2 id="insH" hidden>Insights</h2>
     <div id="ins"></div>
   </div>
@@ -193,6 +200,15 @@ let LAST = {};                   // unit -> latest reading row
 const $ = id => document.getElementById(id);
 const fmtW = w => w == null ? '—'
   : (Math.abs(w) >= 1000 ? (w / 1000).toFixed(2) + ' kW' : Math.round(w) + ' W');
+// One decimal: the swings worth seeing on a service are fractions of a volt,
+// and rounding them away is what makes a voltage chart look like a flat line.
+const fmtV = v => v == null ? '—' : v.toFixed(1) + ' V';
+
+/* The service-voltage band comes from the server (config `voltage:`) so a 230 V
+   service is a config edit, not a code edit, and the chart cannot disagree with
+   the insights rule about what "in range" means. */
+const voltBand = () => (CFG && CFG.voltage) || { low: 114, high: 126, dead_below: 90 };
+const deadBelow = () => voltBand().dead_below ?? 90;
 
 async function get(path) {
   const r = await fetch(API + path);
@@ -235,6 +251,7 @@ async function boot() {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openChart(houseSeries()); }
   };
   buildCards();
+  buildVoltCards();
   await tick();
   setInterval(tick, 5000);
   loadInsights();
@@ -265,6 +282,42 @@ function buildCards() {
       <div class="w" data-w>—</div>
       <div class="meta">${c.volts} V${c.note ? ' · ' + esc(c.note) : ''}</div>
       <div class="bar"><i data-bar style="width:0"></i></div>`;
+    const open = () => openChart(c);
+    el.onclick = open;
+    el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
+    g.appendChild(el);
+  }
+}
+
+/* A meter's line voltage behaves as a chartable series but is not a circuit —
+   it has no CT, no cost and no role in any total. Rather than teach the config
+   about it, one is synthesised per meter that actually reports readings, using
+   the same shape the real channels have so openChart, the router and the chart
+   need no special case beyond the axis. */
+const VOLT_KEY = u => `__volts${u}`;
+function voltChannel(unit) {
+  return { unit, channel: 'volts', key: VOLT_KEY(unit), metric: 'volts',
+           name: `Meter ${unit} · line voltage`, role: 'volts', volts: '' };
+}
+function meterUnits() {
+  return [...new Set((CFG.channels || []).map(c => c.unit))].sort((a, b) => a - b);
+}
+
+function buildVoltCards() {
+  const g = $('volts');
+  g.innerHTML = '';
+  const units = meterUnits();
+  $('voltH').hidden = !units.length;
+  for (const u of units) {
+    const c = voltChannel(u);
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.tabIndex = 0;
+    el.dataset.key = c.key;
+    el.innerHTML = `
+      <div class="name">${esc(c.name)}</div>
+      <div class="w" data-v>—</div>
+      <div class="meta">tap for voltage history</div>`;
     const open = () => openChart(c);
     el.onclick = open;
     el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
@@ -355,10 +408,22 @@ async function tick() {
       Math.min(100, ((w || 0) / peak) * 100) + '%';
   }
 
+  for (const u of meterUnits()) {
+    const el = document.querySelector(`.card[data-key="${CSS.escape(VOLT_KEY(u))}"]`);
+    if (!el) continue;
+    const v = LAST[u] ? LAST[u].volts : null;
+    // Below the dead line the meter has lost its own supply and reads toward
+    // zero. Saying so beats printing a voltage that was never on the service.
+    el.querySelector('[data-v]').textContent =
+      v == null ? '—' : v < deadBelow() ? 'no supply' : fmtV(v);
+  }
+
   // The live figure keeps updating while a chart is open.
   if (CH.open) {
     const row = LAST[CH.ch.unit];
-    $('chartNow').textContent = row ? fmtW(row[CH.ch.channel]) + ' now' : '';
+    const v = row ? row[CH.ch.channel] : null;
+    $('chartNow').textContent = v == null ? ''
+      : (CH.ch.metric === 'volts' ? fmtV(v) : fmtW(v)) + ' now';
   }
 
   const age = rows.length
@@ -398,7 +463,9 @@ function routeFromHash() {
   const m = /^#\/chart\/(\d+)\/(\w+)$/.exec(location.hash || '');
   if (!m) { showDash(); return; }
   const unit = +m[1], channel = m[2];
-  let ch = (CFG.channels || []).find(c => c.unit === unit && c.channel === channel);
+  let ch = channel === 'volts' && meterUnits().includes(unit)
+    ? voltChannel(unit)
+    : (CFG.channels || []).find(c => c.unit === unit && c.channel === channel);
   if (!ch) { showDash(); return; }
   startChart(ch);
 }
@@ -501,24 +568,59 @@ function draw() {
     return;
   }
 
-  const maxW = Math.max(1, ...pts.map(p => p.w));
+  /* Watts are measured FROM zero, so a watt axis starts at zero — halving a
+     bar has to look like halving. Volts are not: a service never goes near
+     zero, so a zero-based voltage axis draws every reading as the same flat
+     line across the top and hides exactly the sag or swell worth seeing. The
+     voltage axis hugs the data instead, snapped out to whole volts so the
+     labels stay readable, with a floor on the span so a dead-calm supply does
+     not get magnified into dramatic-looking noise. */
+  const isVolts = CH.ch.metric === 'volts';
+  const fmtY = isVolts ? fmtV : fmtW;
+  let lo = 0, hi = Math.max(1, ...pts.map(p => p.w));
+  if (isVolts && pts.length) {
+    const dLo = Math.min(...pts.map(p => p.w)), dHi = Math.max(...pts.map(p => p.w));
+    lo = Math.floor(dLo - 0.5);
+    hi = Math.ceil(dHi + 0.5);
+    if (hi - lo < 2) { const mid = (hi + lo) / 2; lo = Math.floor(mid - 1); hi = lo + 2; }
+  }
   const x = t => L + (t - t0) / Math.max(t1 - t0, 1) * (W - L - R);
-  const y = w => T + (1 - w / maxW) * (H - T - B);
+  const y = w => T + (1 - (w - lo) / Math.max(hi - lo, 1e-9)) * (H - T - B);
 
   let line = '', area = '';
   if (pts.length) {
     pts.forEach((p, i) => {
       line += (i ? 'L' : 'M') + x(p.ts).toFixed(1) + ',' + y(p.w).toFixed(1);
     });
-    area = line + `L${x(pts[pts.length - 1].ts).toFixed(1)},${y(0).toFixed(1)}` +
-                  `L${x(pts[0].ts).toFixed(1)},${y(0).toFixed(1)}Z`;
+    // Filling to the baseline says "this much of something". On a voltage axis
+    // the baseline is an arbitrary crop, so the fill would be shading nothing.
+    if (!isVolts) {
+      area = line + `L${x(pts[pts.length - 1].ts).toFixed(1)},${y(lo).toFixed(1)}` +
+                    `L${x(pts[0].ts).toFixed(1)},${y(lo).toFixed(1)}Z`;
+    }
+  }
+
+  /* Shade what is OUT of range, not what is in it. Because the axis hugs the
+     data, a healthy service fills the plot — tinting the in-range band would
+     wash the whole chart in colour that means "nothing is wrong", which is the
+     one thing not worth drawing. Shading the outside instead means colour
+     appears only when the voltage actually reaches a limit, and the amount of
+     it is the size of the excursion. */
+  let band = '';
+  if (isVolts) {
+    const b = voltBand();
+    const shade = (yTop, yBot) =>
+      `<rect x="${L}" y="${yTop.toFixed(1)}" width="${W - L - R}"
+             height="${(yBot - yTop).toFixed(1)}" fill="var(--bad, #c0392b)" opacity="0.10"/>`;
+    if (hi > b.high) band += shade(y(hi), y(b.high));      // swell
+    if (lo < b.low) band += shade(y(b.low), y(lo));        // sag
   }
 
   let grid = '';
   for (let i = 0; i <= 4; i++) {
-    const v = maxW * i / 4, yy = y(v);
+    const v = lo + (hi - lo) * i / 4, yy = y(v);
     grid += `<line x1="${L}" y1="${yy.toFixed(1)}" x2="${W - R}" y2="${yy.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`;
-    grid += `<text x="${L - 9}" y="${(yy + 5).toFixed(1)}" text-anchor="end" font-size="13" fill="var(--dim)">${fmtW(v)}</text>`;
+    grid += `<text x="${L - 9}" y="${(yy + 5).toFixed(1)}" text-anchor="end" font-size="13" fill="var(--dim)">${fmtY(v)}</text>`;
   }
   const span = t1 - t0;
   let ticks = '';
@@ -535,11 +637,18 @@ function draw() {
   const sx = t => L + (t - b0) / Math.max(b1 - b0, 1) * (W - L - R);
   let strip = '';
   if (ov.length) {
-    const om = Math.max(1, ...ov.map(p => p.w));
+    // The strip needs its own domain: it shows the WHOLE range, not the zoomed
+    // window, and on a voltage axis scaling it from zero would flatten it into
+    // a straight line and make the navigator useless for finding an event.
+    let oLo = 0, oHi = Math.max(1, ...ov.map(p => p.w));
+    if (isVolts) {
+      oLo = Math.min(...ov.map(p => p.w));
+      if (oHi - oLo < 1) { oHi = oLo + 1; }
+    }
     let sp = '';
     ov.forEach((p, i) => {
       sp += (i ? 'L' : 'M') + sx(p.ts).toFixed(1) + ',' +
-            (sy + SH - (p.w / om) * (SH - 6)).toFixed(1);
+            (sy + SH - ((p.w - oLo) / (oHi - oLo)) * (SH - 6)).toFixed(1);
     });
     strip = `<path d="${sp}" fill="none" stroke="var(--dim)" stroke-width="1.2" opacity="0.75"/>`;
   }
@@ -547,8 +656,9 @@ function draw() {
 
   $('plot').innerHTML = `
   <svg id="svg" viewBox="0 0 ${W} ${totalH}" role="img"
-       aria-label="${esc(CH.ch.name)} power, ${esc(fmtSpan(span))} shown">
+       aria-label="${esc(CH.ch.name)} ${isVolts ? 'line voltage' : 'power'}, ${esc(fmtSpan(span))} shown">
     <rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent" id="plotArea"/>
+    ${band}
     ${grid}
     ${area ? `<path d="${area}" fill="var(--accent)" opacity="0.16"/>` : ''}
     ${line ? `<path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2"
@@ -591,6 +701,20 @@ function updateChartMeta() {
   if (!pts.length) { $('stats').innerHTML = ''; return; }
   const avg = pts.reduce((a, p) => a + p.w, 0) / pts.length;
   const peak = Math.max(...pts.map(p => p.w));
+  // Voltage has no energy and no cost, and its useful extreme is the LOW one —
+  // a sag is what dims lights and stalls motors. kWh of volts would be nonsense.
+  if (CH.ch.metric === 'volts') {
+    const b = voltBand();
+    const min = Math.min(...pts.map(p => p.w));
+    const out = pts.filter(p => p.w < b.low || p.w > b.high).length;
+    $('stats').innerHTML =
+      `<span><b>${fmtV(avg)}</b> <span style="color:var(--dim)">average</span></span>
+       <span><b>${fmtV(min)}</b> <span style="color:var(--dim)">lowest</span></span>
+       <span><b>${fmtV(peak)}</b> <span style="color:var(--dim)">highest</span></span>
+       <span><b>${out ? Math.round(out / pts.length * 100) + '%' : 'none'}</b>
+         <span style="color:var(--dim)">outside ${fmtV(b.low)}–${fmtV(b.high)}</span></span>`;
+    return;
+  }
   const kwh = avg / 1000 * (span / 3600);
   const sym = CFG.currency_symbol || '$';
   const rate = CFG.rate_per_kwh || 0;

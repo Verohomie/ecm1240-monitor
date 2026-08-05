@@ -518,6 +518,21 @@ footer { text-align: center; font-size: 11px; color: #94a3b8; padding: 24px; bor
         window is exactly how you get finer resolution. <strong>Any chart library you drop in
         talks to this same endpoint.</strong>
       </p>
+      <p style="margin-top:10px;margin-bottom:0">
+        That average is <strong>weighted by time, not by reading</strong>. An ECM-1240 does not
+        report on a perfect metronome — it slips to a shorter interval right when a large load
+        switches — so each stored reading records how many seconds it covers, and a bucket's
+        value is the energy in it divided by its duration. Counting every reading equally instead
+        over-weights the short ones and puts a spike on the chart at each switch-on, sized by the
+        meter's timing rather than by any real load.
+      </p>
+      <p style="margin-top:10px;margin-bottom:0">
+        <code>channel</code> also accepts <code>volts</code>, which returns that meter's line
+        voltage instead of watts. Readings below <code>voltage.dead_below</code> are left out of
+        the bucket rather than averaged in: a meter that has lost its own supply reads toward
+        zero, and that is a dead meter rather than a brownout. A bucket where every reading was
+        dead comes back <code>null</code>, so the chart shows an honest gap.
+      </p>
     </div>
 
     <h3>Swapping in a chart library</h3>
