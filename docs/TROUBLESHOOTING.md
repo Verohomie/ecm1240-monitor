@@ -61,6 +61,39 @@ units.** Renumbering makes the live data disagree with everything already stored
 Use `/dev/serial/by-path/` names, never `/dev/ttyUSB0`, or this will recur at
 every reboot.
 
+## The "Unmetered" figure is large, or jumps around
+
+Unmetered is the mains minus every metered branch: whatever is on your service
+that no CT is clamped around. Three different things look alike here.
+
+**It flashes a big number for a few seconds when something switches on.** That
+was the old behaviour and is fixed — the dashboard now reads `/api/snapshot`,
+which measures both meters over one shared window instead of subtracting two
+readings taken a second or two apart. If you still see it, you are on an older
+API (the page falls back to `/api/now` silently) or a browser cache: reload with
+Ctrl-Shift-R, and check `curl localhost:8080/api/snapshot` returns an `aligned`
+block.
+
+**It sits at a steady few hundred watts and never moves.** Something real is
+uncounted. Two candidates, in order of likelihood:
+
+1. **A CT has come off**, or is clamped around a cable that carries two
+   conductors in opposite directions (a whole cable rather than one conductor),
+   in which case it reads near zero while the circuit is definitely running.
+   Compare each branch against the appliance you know is on it.
+2. **A circuit genuinely has no CT** — a subpanel, an EV charger, an outbuilding
+   added after the meters went in. That is not a fault. Raise
+   `unmetered.noise_high_watts` above it, or clamp it and add the channel.
+
+**It goes negative — the branches add up to more than the mains.** Every watt
+has to cross the mains CT to reach a branch, so this is always a measurement
+error: two CTs on the same circuit, a branch CT programmed with the wrong range,
+or a mains channel reading low. See [`CALIBRATION.md`](CALIBRATION.md).
+
+The insights pass reports on this once a day's data exists, judging the *median*
+and the quietest tenth rather than the peak — so a big occasional load (that EV
+charger) cannot trip it, while a CT that has come off cannot hide.
+
 ## Readings stop for hours, then come back
 
 Look for guard rejections:

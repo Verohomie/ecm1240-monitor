@@ -177,6 +177,20 @@ Then run the pass (a systemd timer every 15 minutes is typical):
 python3 -m ecm1240.insights
 ```
 
+Two of the checks need **no profiles at all** and work from the first day, since
+they run off the config and the readings rather than off your appliances:
+
+- **Service voltage** — how often the supply left the normal band, and which way
+  it went. Readings below `voltage.dead_below` are excluded on purpose: an ECM
+  senses the line through its own AC adapter, so an unplugged adapter or a power
+  cut reads as the voltage collapsing to zero, which is a different problem from
+  a brownout and should not be reported as one.
+- **Unmetered load** — the mains minus every metered branch, i.e. how much of
+  the house has no CT on it. Judged on the median and the quietest tenth of the
+  day rather than the peak, so a large occasional load with no CT (an EV
+  charger) does not report itself every night, while a CT that has come loose
+  shows up immediately and stays.
+
 ## ⚠ Safety
 
 **This project requires current transformers inside a live electrical panel.**

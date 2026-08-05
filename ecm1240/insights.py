@@ -63,7 +63,7 @@ def connect(db_path):
 
 
 def load_window(db, unit, since):
-    """All channels for one meter since `since`, as ts[] + {ch: watts[]}.
+    """All channels for one meter since `since`, as ts[] + volts[] + {ch: watts[]}.
 
     One query per meter rather than one per channel: on a small Pi the
     per-query overhead dominates, and every rule for a meter runs off this
@@ -74,8 +74,9 @@ def load_window(db, unit, since):
         f"SELECT ts,volts,{cols} FROM readings WHERE unit_id=? AND ts>=? ORDER BY ts",
         (unit, since)).fetchall()
     ts = [r[0] for r in rows]
+    volts = [r[1] for r in rows]
     series = {ch: [r[2 + i] for r in rows] for i, ch in enumerate(CHANNELS)}
-    return ts, series
+    return ts, volts, series
 
 
 def history_days(db, unit):
@@ -355,6 +356,250 @@ def rules_always_on(prof, series, floor, days_of_history):
                  f"Holding at {w_txt(cur)}.", stat=w_txt(cur))]
 
 
+def rule_voltage(cfg, volts_by_unit, ref_unit):
+    """Service voltage excursions, judged on one meter.
+
+    Judged on the meter carrying the mains, not on an average of them all: an
+    ECM computes watts from its OWN voltage reference, so the whole-house figure
+    is scaled by that meter's volts and by nothing else. Alarming on the same
+    number the house total is built from is the point; an average would report a
+    voltage no channel actually uses.
+
+    Readings below `voltage.dead_below` are excluded from the verdict entirely.
+    They are the meter losing its own supply rather than the service sagging —
+    see the note on that setting in config.py. They get their own quiet note,
+    because a meter that keeps blacking out is worth knowing about; it just is
+    not a voltage fault, and it must not drag the reported range down to zero.
+    """
+    vcfg = cfg.get("voltage", {})
+    lo_lim = float(vcfg.get("low", 114.0))
+    hi_lim = float(vcfg.get("high", 126.0))
+    dead_below = float(vcfg.get("dead_below", 90.0))
+    prof = {"unit": ref_unit, "ch": "volts", "name": "Service voltage"}
+
+    raw = [v for v in volts_by_unit.get(ref_unit, []) if v is not None]
+    if not raw:
+        return []
+    live = [v for v in raw if v >= dead_below]
+    dead = len(raw) - len(live)
+    if not live:
+        return [card("voltage_dead", prof, INFO, "No usable voltage readings",
+                     f"Every reading in the last {CYCLE_WINDOW_H} h was below "
+                     f"{dead_below:.0f} V, which means the meter has lost its "
+                     "own power rather than the service being low — check its "
+                     "AC adapter.", stat="meter unpowered")]
+
+    lo, hi = min(live), max(live)
+    n_low = sum(1 for v in live if v < lo_lim)
+    n_high = sum(1 for v in live if v > hi_lim)
+    cards = []
+    if n_low or n_high:
+        share = (n_low + n_high) / len(live) * 100
+        # Say WHICH way it went: a sag and a surge are different faults with
+        # different causes, and one message covering both explains the wrong one
+        # to whoever reads it.
+        if n_low and n_high:
+            what = (f"{n_low:,} readings sagged below {lo_lim:.0f} V and "
+                    f"{n_high:,} rose above {hi_lim:.0f} V")
+            why = ("Sags under heavy load and a supply running hot are separate "
+                   "problems; seeing both in a day is worth raising with your "
+                   "utility.")
+        elif n_low:
+            what = (f"{n_low:,} reading{'s' if n_low != 1 else ''} sagged below "
+                    f"{lo_lim:.0f} V, as low as {lo:.1f} V")
+            why = ("A brief dip when something large starts is normal. A sag "
+                   "that keeps happening starves motors and is worth raising "
+                   "with your utility.")
+        else:
+            what = (f"{n_high:,} reading{'s' if n_high != 1 else ''} rose above "
+                    f"{hi_lim:.0f} V, peaking at {hi:.1f} V")
+            why = ("A supply running high shortens the life of everything "
+                   "plugged into it — worth raising with your utility if it "
+                   "keeps up.")
+        cards.append(card("voltage", prof, WATCH if share < 1 else ALERT,
+                          "Line voltage went out of range",
+                          f"{what} in the last {CYCLE_WINDOW_H} h — {share:.1f}% "
+                          f"of {len(live):,} readings, against the normal "
+                          f"{lo_lim:.0f}–{hi_lim:.0f} V band. {why}",
+                          stat=f"{lo:.0f}–{hi:.0f} V"))
+    else:
+        cards.append(card("voltage", prof, OK, "Line voltage is healthy",
+                          f"Stayed between {lo:.1f} and {hi:.1f} V over the last "
+                          f"{CYCLE_WINDOW_H} h, inside the "
+                          f"{lo_lim:.0f}–{hi_lim:.0f} V band.",
+                          stat=f"{lo:.0f}–{hi:.0f} V"))
+
+    if dead:
+        cards.append(card("voltage_dead", prof, INFO,
+                          "The meter briefly lost power",
+                          f"{dead:,} reading{'s' if dead != 1 else ''} in the "
+                          f"last {CYCLE_WINDOW_H} h came in under "
+                          f"{dead_below:.0f} V. That is not a brownout: the "
+                          "meter senses the line through its own AC adapter, so "
+                          "a power cut, an unplugged adapter or a lost sensing "
+                          "lead all read as the voltage collapsing. Left out of "
+                          "the verdict above. If it repeats while the lights "
+                          "stay on, check the adapter and its socket.",
+                          stat=f"{dead:,} dead"))
+    return cards
+
+
+def pair_index(ts_a, ts_b, max_skew_s=4):
+    """Nearest-in-time (i, j) index pairs between two meters' samples.
+
+    Two ECMs free-run on their own clocks, so they share almost no timestamps: a
+    SQL join on a.ts = b.ts matches only the occasional coincidence, and a
+    tolerant join needs a correlated subquery per row, which on a small Pi costs
+    more than the whole pass. A two-pointer merge over windows already in memory
+    costs nothing. Pairs further apart than max_skew_s are dropped — that is a
+    gap on one side, not a pair.
+    """
+    out = []
+    if not ts_a or not ts_b:
+        return out
+    j = 0
+    for i, t in enumerate(ts_a):
+        while j + 1 < len(ts_b) and abs(ts_b[j + 1] - t) <= abs(ts_b[j] - t):
+            j += 1
+        if abs(ts_b[j] - t) <= max_skew_s:
+            out.append((i, j))
+    return out
+
+
+def pct(vals, q):
+    """Order-statistic percentile (q in 0..1) of an unsorted list."""
+    s = sorted(vals)
+    return s[min(int(q * (len(s) - 1)), len(s) - 1)]
+
+
+def unmetered_series(cfg, window):
+    """Every paired instant as the mains minus the sum of the metered branches.
+
+    `window` is {unit: (ts, series)}. With one meter this is a straight
+    subtraction; with two it needs the pairing above, because their samples do
+    not line up.
+    """
+    mains = cfgmod.mains_channel(cfg)
+    if not mains:
+        return []
+    m_unit, m_ch = mains
+    if m_unit not in window:
+        return []
+    branches = {}
+    for c in cfgmod.channel_list(cfg):
+        # Hidden means "not shown", not "not measured" — leaving a hidden
+        # channel out would report its circuit as unmetered load.
+        if c["role"] != "mains":
+            branches.setdefault(c["unit"], []).append(c["channel"])
+
+    ts_m, ser_m = window[m_unit]
+    others = [u for u in branches if u != m_unit and u in window]
+    pairs = {u: dict(pair_index(ts_m, window[u][0])) for u in others}
+
+    out = []
+    for i, t in enumerate(ts_m):
+        house = ser_m[m_ch][i]
+        if house is None:
+            continue
+        total = 0.0
+        ok = True
+        for ch in branches.get(m_unit, []):
+            v = ser_m[ch][i]
+            if v is None:
+                ok = False
+                break
+            total += v
+        for u in others:
+            j = pairs[u].get(i)
+            if j is None:                 # no sample close enough in time
+                ok = False
+                break
+            for ch in branches[u]:
+                v = window[u][1][ch][j]
+                if v is None:
+                    ok = False
+                    break
+                total += v
+            if not ok:
+                break
+        if ok:
+            out.append(house - total)
+    return out
+
+
+def rule_unmetered(cfg, window, min_samples=720):
+    """How much of the house has no CT on it — and whether that is changing.
+
+    The check a per-circuit monitor cannot do for itself: the mains sees every
+    watt, the branch CTs see only what they are clamped around, and the gap
+    between them is everything nobody is measuring. A gap that grows and stays
+    is either something new plugged into an uncounted circuit, or a CT that has
+    come loose and is quietly under-reading its own circuit.
+
+    Judged on the MEDIAN and the 10th percentile rather than the peak or the
+    mean, which is what makes it usable in a real house. Something large but
+    occasional — an EV charger with no CT, a well pump, a workshop — is supposed
+    to open the gap for a few hours; a load running four hours in twenty-four
+    cannot move either statistic. A CT that has come off can never come back
+    down, and shows up immediately.
+    """
+    prof = {"unit": 0, "ch": "__unmetered",
+            "name": cfg.get("unmetered", {}).get("label", "Unmetered")}
+    ucfg = cfg.get("unmetered", {})
+    noise_lo = float(ucfg.get("noise_low_watts", -50))
+    noise_hi = float(ucfg.get("noise_high_watts", 100))
+
+    if not cfgmod.mains_channel(cfg):
+        return []                 # no whole-house channel: nothing to compare
+    vals = unmetered_series(cfg, window)
+    if len(vals) < min_samples:
+        return [card("unmetered", prof, INFO,
+                     f"{prof['name']} — not enough paired readings",
+                     f"{len(vals):,} moments in the last {CYCLE_WINDOW_H} h had "
+                     "every meter reporting together. Normal shortly after a "
+                     "restart, or if a meter has been offline.")]
+
+    floor, typ = pct(vals, 0.10), pct(vals, 0.50)
+    high = sum(1 for w in vals if w > noise_hi) / len(vals) * 100
+    stat = f"{typ:+.0f} W typical"
+
+    if floor > noise_hi:
+        return [card("unmetered", prof, ALERT,
+                     "Something is drawing power that no CT sees",
+                     f"The mains reads {w_txt(floor)} more than every metered "
+                     "circuit added up even at its quietest, and "
+                     f"{w_txt(typ)} more typically ({high:.0f}% of the last "
+                     f"{CYCLE_WINDOW_H} h above {w_txt(noise_hi)}). A gap that "
+                     "never closes is either a circuit with no CT on it, or a "
+                     "CT that has come loose and is under-reading. That floor "
+                     f"alone is {floor * 24 / 1000:.1f} kWh a day.",
+                     stat=f"{floor:+.0f} W floor")]
+    if typ > noise_hi:
+        return [card("unmetered", prof, WATCH,
+                     "More is being used than the CTs account for",
+                     f"For most of the last {CYCLE_WINDOW_H} h the mains read "
+                     f"about {w_txt(typ)} more than the metered circuits summed "
+                     f"to ({high:.0f}% of readings above {w_txt(noise_hi)}), "
+                     f"falling back to {w_txt(floor)} at its quietest. If it "
+                     "stays up, look for a CT that has come off its conductor "
+                     "or a circuit nobody has clamped.",
+                     stat=stat)]
+    if typ < noise_lo:
+        return [card("unmetered", prof, WATCH,
+                     "The CTs add up to more than the mains",
+                     f"Typically {w_txt(-typ)} more, which is backwards — every "
+                     "watt has to cross the mains CT to reach a branch. That "
+                     "points at two CTs on the same circuit, a branch CT set to "
+                     "the wrong range, or a mains channel reading low. "
+                     "CALIBRATION.md covers checking a channel against a clamp "
+                     "meter.", stat=stat)]
+    return [card("unmetered", prof, OK, "Every watt is accounted for",
+                 f"The mains and the metered circuits agree to within "
+                 f"{w_txt(abs(typ))} for most of the day — inside the "
+                 f"{noise_lo:.0f} to {noise_hi:.0f} W the CTs' own tolerance "
+                 "explains.", stat=stat)]
+
+
 DISPATCH = {"cycling": rules_cycling, "multistate": rules_multistate,
             "burst": rules_burst}
 
@@ -393,7 +638,23 @@ def run(cfg):
     profs, prof_path = load_profiles(cfg)
     db = connect(db_path)
     now_ts = int(time.time())
+    since = now_ts - CYCLE_WINDOW_H * 3600
     cards = []
+
+    # Whole-house checks first. These need no profiles at all — they run off the
+    # config and the readings — so a fresh installation gets a working voltage
+    # check and an honest unmetered figure on day one, before anyone has sat
+    # down to describe their appliances.
+    window, volts_by_unit = {}, {}
+    for u in sorted({c["unit"] for c in cfgmod.channel_list(cfg)}):
+        ts_u, volts_u, series_u = load_window(db, u, since)
+        if ts_u:
+            window[u] = (ts_u, series_u)
+            volts_by_unit[u] = volts_u
+    mains = cfgmod.mains_channel(cfg)
+    ref_unit = mains[0] if mains else (min(volts_by_unit) if volts_by_unit else 0)
+    cards += rule_voltage(cfg, volts_by_unit, ref_unit)
+    cards += rule_unmetered(cfg, window)
 
     if not profs:
         cards.append({
@@ -406,15 +667,21 @@ def run(cfg):
                 "point from your recorded data:\n\n"
                 "    python3 tools/suggest_profiles.py > profiles.yaml\n\n"
                 f"Expected at: {prof_path}")})
-        return {"generated_at": now_ts, "cards": cards, "profiles": 0}
+        cards.sort(key=lambda c: LEVEL_RANK.get(c["level"], 9))
+        return {"generated_at": now_ts, "cards": cards, "profiles": 0,
+                "window_h": CYCLE_WINDOW_H}
 
     by_unit = {}
     for p in profs:
         by_unit.setdefault(p.get("unit", 0), []).append(p)
 
     for unit, unit_profs in sorted(by_unit.items()):
-        since = now_ts - CYCLE_WINDOW_H * 3600
-        ts, series = load_window(db, unit, since)
+        # Reuse the window already read for the whole-house checks; only a meter
+        # with profiles but no configured channels needs its own query.
+        if unit in window:
+            ts, series = window[unit]
+        else:
+            ts, _volts, series = load_window(db, unit, since)
         if not ts:
             continue
         floors = circuit_floors(db, unit)

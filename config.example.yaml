@@ -127,6 +127,34 @@ unmetered:
   max_watts: 20000
   label: "Unmetered"         # shown in the dashboard's cost breakdown
 
+  #  The band inside which "mains minus the metered branches" means nothing.
+  #  Every CT is a percent or two out and the readings are short averages, so a
+  #  few tens of watts either way is your sensors agreeing, not a load. Inside
+  #  this band the dashboard hides the figure and the insights check stays
+  #  quiet; outside it, something really is drawing power nothing measures —
+  #  a circuit with no CT, or a CT that has come off its conductor.
+  #
+  #  Widen it if your house is bigger or your CTs are less accurate; a good
+  #  rule of thumb is 1% of your typical whole-house draw.
+  noise_low_watts: -50
+  noise_high_watts: 100
+
+# ─── Service voltage ─────────────────────────────────────────────────────────
+#  Defaults are ANSI C84.1 Range A for a 120 V nominal service. On a 230 V
+#  service use roughly low: 216, high: 253.
+#
+#  dead_below is NOT a low-voltage limit. It is the point below which the
+#  reading is not a measurement at all: an ECM senses the line through its own
+#  AC wall transformer, so an unplugged adapter, a lost sensing lead or a real
+#  power cut all read as the voltage collapsing toward zero. Counting those as
+#  "voltage out of range" is true and useless — and a single such reading would
+#  otherwise report your day as having ranged from 0 V. Anything above it,
+#  including a serious 90 V brownout, is still judged as a real event.
+voltage:
+  low: 114.0
+  high: 126.0
+  dead_below: 90.0
+
 # ─── Consistency guards ──────────────────────────────────────────────────────
 #  Sane defaults. Change only if you understand what each rule rejects.
 guards:

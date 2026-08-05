@@ -35,7 +35,24 @@ DEFAULTS = {
     "database": {"path": "./energy.db"},
     "api": {"bind": "127.0.0.1", "port": 8080, "allowed_origin": ""},
     "collector": {"flush_interval": 30, "live_feed_port": 0, "gateway_port": 8082},
-    "unmetered": {"max_watts": 20000},
+    # noise_*_watts: the band inside which "mains minus the metered branches"
+    # means nothing. CT accuracy is a percent or two per channel and the
+    # readings are short averages, so a few tens of watts either way is the
+    # sensors agreeing, not a load. The dashboard hides the figure inside this
+    # band and the insights rule stays quiet; outside it, something really is
+    # drawing power nothing measures.
+    "unmetered": {"max_watts": 20000, "noise_low_watts": -50,
+                  "noise_high_watts": 100},
+    # Service voltage. Defaults are ANSI C84.1 Range A for a 120 V nominal
+    # service; a 230 V service wants roughly low: 216, high: 253.
+    #
+    # dead_below is NOT a low-voltage limit — it is the point below which the
+    # reading is not a measurement at all. An ECM senses the line through its
+    # own AC wall transformer, so a pulled transformer, a lost sensing lead or a
+    # real power cut all read as the voltage collapsing toward zero. Counting
+    # that as "voltage out of range" is true and useless, and one such reading
+    # would report the day's range as starting at 0 V.
+    "voltage": {"low": 114.0, "high": 126.0, "dead_below": 90.0},
     "guards": {"max_plausible_watts": 50000, "min_interval_s": 2,
                "rebase_after_s": 120, "coherence_k": 1.3},
     "digest": {"enabled": False},

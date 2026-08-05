@@ -9,6 +9,8 @@ Endpoints:
   GET /api/config                  -> site name, rate, and the channel list
   GET /api/health                  -> row count, last-sample age, guard tosses
   GET /api/now                     -> latest reading per meter
+  GET /api/snapshot                -> the same rows, plus a time-aligned
+                                      house / metered / unmetered trio
   GET /api/history?channel=&unit=&minutes=&points=&agg=avg|max&end=
                                    -> time-bucketed watts series
   GET /api/discards?days=          -> consistency-guard rejections over time
@@ -29,6 +31,7 @@ import argparse
 import json
 import os
 import sqlite3
+import statistics
 import time
 
 from flask import Flask, g, jsonify, request
@@ -37,6 +40,34 @@ from . import config as cfgmod
 from .protocol import CHANNELS
 
 INSIGHTS_STALE_S = 3600     # 4 missed timer runs -> the app should say so
+
+# ── the aligned snapshot (/api/snapshot) ─────────────────────────────────────
+# Two ECMs free-run on their own clocks. There is no way to make them sample
+# together, and no setting that syncs them: each simply reports on its own
+# interval, so a pair of "latest" readings is typically a second or two apart.
+#
+# That is enough to break one specific sum: mains minus the total of the metered
+# branches, the figure that tells you how much of your house has no CT on it. A
+# load switching on between the two meters' reads gets counted on ONE side of
+# that subtraction, so the answer briefly jumps by the whole size of the load —
+# an oven element looks like a 1.5 kW mystery load for a few seconds, then
+# vanishes. Pairing each reading with the closest one in time does NOT fix it:
+# the offset between two free-running meters is roughly constant, so the nearest
+# neighbour is still the one from a second or two ago.
+#
+# What does fix it is measuring energy instead of comparing instants. Every
+# stored reading is already the AVERAGE power over the interval ending at its
+# timestamp (the collector differences the meter's watt-second counters), so
+# weighting each reading by how much of its interval falls inside a shared
+# window gives the energy that really flowed in that window — the same window
+# for every meter, whatever phase each one samples on.
+SNAP_WINDOW_S = 30           # shared window; widened below for slow cadences
+SNAP_PAD_S = 90              # extra history read so the window's first interval
+                             # is complete and a stalled meter is visible
+SNAP_DEFAULT_INTERVAL_S = 5  # assumed cadence before any gaps have been seen
+SNAP_MAX_INTERVAL_S = 60     # one reading may never stand for more time than this
+SNAP_MIN_COVERAGE = 0.6      # less of the window than this = a gap; refuse the sum
+SNAP_MAX_SKEW_S = 20         # meters further apart than this: one is stalling
 
 app = Flask(__name__, static_folder=None)
 CFG = None                  # populated by main() / create_app()
@@ -134,6 +165,11 @@ def api_config():
         timezone=site.get("timezone", "UTC"),
         mains={"unit": mains[0], "channel": mains[1]} if mains else None,
         unmetered_label=CFG.get("unmetered", {}).get("label", "Unmetered"),
+        # The dashboard hides the unmetered figure inside this band, and the
+        # insights rule judges against the same number — served rather than
+        # duplicated in the page, so the screen and the verdict cannot disagree
+        # about what counts as noise.
+        unmetered_noise_high_w=CFG.get("unmetered", {}).get("noise_high_watts", 100),
         channels=cfgmod.channel_list(CFG),
     )
 
@@ -226,6 +262,163 @@ def now():
         " (SELECT unit_id, MAX(ts) AS mts FROM readings GROUP BY unit_id) m"
         " ON r.unit_id = m.unit_id AND r.ts = m.mts").fetchall()
     return jsonify([dict(r) for r in rows])
+
+
+def _intervals(rows):
+    """Each row's interval length, and the cadence to assume for the first one.
+
+    Derived from the data rather than configured: an ECM-1240 can be set to
+    report anywhere from about one second to a minute, and the right window
+    depends on which. The median observed gap is used for the oldest row, whose
+    own predecessor was not read.
+    """
+    gaps = [b["ts"] - a["ts"] for a, b in zip(rows, rows[1:])
+            if 0 < b["ts"] - a["ts"] <= SNAP_MAX_INTERVAL_S]
+    nominal = statistics.median(gaps) if gaps else SNAP_DEFAULT_INTERVAL_S
+    out = []
+    prev = None
+    for r in rows:
+        span = nominal if prev is None else min(max(r["ts"] - prev, 1),
+                                                SNAP_MAX_INTERVAL_S)
+        out.append(span)
+        prev = r["ts"]
+    return out, nominal
+
+
+def _window_means(rows, t0, t1):
+    """Overlap-weighted mean watts per channel over [t0, t1], plus coverage.
+
+    Each reading is the mean power over the interval ENDING at its timestamp, so
+    it is weighted by how much of that interval lies inside the window. The
+    result is the energy that actually flowed in [t0, t1] divided by the time it
+    flowed over — the same quantity for every meter regardless of when each one
+    happened to report.
+
+    Coverage is tracked per channel, so a scrubbed reading (NULL watts, left by
+    the consistency guards) lowers that channel's confidence instead of quietly
+    dragging its mean toward zero.
+    """
+    spans, _ = _intervals(rows)
+    tot = {ch: 0.0 for ch in CHANNELS}
+    cov = {ch: 0.0 for ch in CHANNELS}
+    window_cov = 0.0
+    for r, span in zip(rows, spans):
+        overlap = min(r["ts"], t1) - max(r["ts"] - span, t0)
+        if overlap <= 0:
+            continue
+        window_cov += overlap
+        for ch in CHANNELS:
+            v = r[ch] if ch in r.keys() else None
+            if v is not None:
+                tot[ch] += v * overlap
+                cov[ch] += overlap
+    means = {ch: (tot[ch] / cov[ch] if cov[ch] else None) for ch in CHANNELS}
+    return means, window_cov / float(t1 - t0)
+
+
+@app.get("/api/snapshot")
+def snapshot():
+    """Latest rows per meter, plus a time-aligned house/metered/unmetered trio.
+
+    `units` is exactly what /api/now returns — kept so a dashboard can drive its
+    live tiles from a single request — with each row's age and its `skew_s`
+    against the meter carrying the mains stated rather than left implicit.
+
+    `aligned` is the part worth having: house, metered and unmetered watts all
+    integrated over ONE window (see SNAP_WINDOW_S above for why comparing the
+    latest rows directly cannot be made simultaneous).
+
+    `unmetered_w` is null, with a `reason` in plain English, whenever the sum
+    would be dishonest: no mains channel configured, a meter silent, a gap in
+    the window, or two meters too far apart to pair. A missing number a
+    dashboard can label beats a plausible wrong one.
+    """
+    now_ts = int(time.time())
+    mains = cfgmod.mains_channel(CFG)
+    chans = cfgmod.channel_list(CFG)
+    units = sorted({c["unit"] for c in chans}) or [0]
+
+    # Anchored on the newest reading in the store, not on the wall clock. If the
+    # collector stops, this keeps returning the last coherent picture — with
+    # age_s saying how old it is — rather than going blank and looking like a
+    # different fault. It is also what lets the endpoint work against recorded
+    # data, such as the demo database.
+    newest = db().execute("SELECT MAX(ts) FROM readings").fetchone()[0]
+    if newest is None:
+        return jsonify(ok=False, now=now_ts, units=[],
+                       aligned={"unmetered_w": None,
+                                "reason": "the database has no readings yet"})
+    rows = db().execute("SELECT * FROM readings WHERE ts >= ? ORDER BY ts",
+                        (newest - SNAP_WINDOW_S - SNAP_PAD_S,)).fetchall()
+    by_unit = {}
+    for r in rows:
+        by_unit.setdefault(r["unit_id"], []).append(r)
+    latest = {u: rs[-1] for u, rs in by_unit.items() if rs}
+    if not latest:
+        return jsonify(ok=False, now=now_ts, units=[],
+                       aligned={"unmetered_w": None,
+                                "reason": "no readings to work from"})
+
+    # Anchor on the meter carrying the mains: it is the number everything else
+    # is subtracted from, so it is the one the rest should line up with.
+    anchor = latest.get(mains[0]) if mains else None
+    if anchor is None:
+        anchor = max(latest.values(), key=lambda r: r["ts"])
+
+    out_units = []
+    for u in sorted(latest):
+        d = dict(latest[u])
+        d["age_s"] = now_ts - d["ts"]
+        d["skew_s"] = d["ts"] - anchor["ts"]
+        out_units.append(d)
+
+    present = [u for u in units if u in latest]
+    missing = [u for u in units if u not in latest]
+    skew = max((abs(latest[u]["ts"] - anchor["ts"]) for u in present), default=0)
+    # The window has to END where the SLOWEST meter's data ends, or the mains
+    # gets integrated over seconds the branches have not reported yet — which is
+    # the very skew this endpoint exists to remove.
+    t1 = min((latest[u]["ts"] for u in present), default=anchor["ts"])
+    # A slow cadence needs a longer window: the shared window must span several
+    # readings on every meter or a single reading dominates it.
+    _, nominal = _intervals(by_unit.get(anchor["unit_id"], []))
+    window = max(SNAP_WINDOW_S, int(nominal) * 6)
+    t0 = t1 - window
+    aligned = {"window_s": window, "t0": t0, "t1": t1, "skew_s": skew,
+               "unmetered_w": None}
+
+    if not mains:
+        aligned["reason"] = ("no channel has role: mains, so there is nothing to "
+                             "compare the branches against")
+    elif missing:
+        aligned["reason"] = ("meter " + "/".join(str(m) for m in missing)
+                             + " has not reported")
+    elif skew > SNAP_MAX_SKEW_S:
+        aligned["reason"] = (f"the meters are {skew} s apart — one of them is "
+                             "stalling")
+    else:
+        means, coverage = {}, {}
+        for u in present:
+            means[u], coverage[u] = _window_means(by_unit[u], t0, t1)
+        aligned["coverage"] = {str(u): round(c, 3) for u, c in coverage.items()}
+        thin = [u for u, c in coverage.items() if c < SNAP_MIN_COVERAGE]
+        house = means.get(mains[0], {}).get(mains[1])
+        if thin:
+            aligned["reason"] = ("meter " + "/".join(str(t) for t in thin)
+                                 + " has a gap in this window")
+        elif house is None:
+            aligned["reason"] = "no usable mains reading in this window"
+        else:
+            # Hidden channels count: hidden means "not shown", not "not
+            # measured", and leaving one out would report its circuit as
+            # unmetered load.
+            metered = sum(means[c["unit"]][c["channel"]] or 0.0 for c in chans
+                          if c["role"] != "mains" and c["unit"] in means)
+            aligned.update(house_w=round(house, 1),
+                           metered_w=round(metered, 1),
+                           unmetered_w=round(house - metered, 1))
+    return jsonify(ok=True, now=now_ts, ts=anchor["ts"],
+                   age_s=now_ts - anchor["ts"], units=out_units, aligned=aligned)
 
 
 @app.get("/api/history")

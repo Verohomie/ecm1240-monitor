@@ -48,6 +48,8 @@ h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.2px; }
 .hero .lbl { font-size: 15px; color: var(--dim); text-transform: uppercase;
              letter-spacing: 1px; }
 .hero .cost { font-size: 16px; color: var(--dim); margin-top: 8px; }
+.hero .unmet { font-size: 15px; color: var(--dim); margin-top: 6px; }
+.hero .unmet b { color: var(--fg); font-weight: 600; }
 .hero .hint { font-size: 13px; color: var(--dim); margin-top: 10px; opacity: .8; }
 h2 { font-size: 16px; margin: 26px 0 12px; color: var(--dim);
      text-transform: uppercase; letter-spacing: 1px; }
@@ -151,6 +153,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
       <div class="lbl" id="heroLbl">Whole House</div>
       <div class="big" id="heroW">—</div>
       <div class="cost" id="heroCost"></div>
+      <div class="unmet" id="heroUnmet" hidden></div>
       <div class="hint">Tap for a zoomable chart</div>
     </div>
 
@@ -270,10 +273,30 @@ function buildCards() {
 }
 
 /* ── live poll ───────────────────────────────────────────────────────────── */
+// /api/snapshot returns the same latest-reading-per-meter as /api/now, plus a
+// time-aligned unmetered figure computed over one shared window — which is the
+// only way to get that number right when two meters sample on their own clocks
+// (see snapshot() in ecm1240/api.py). An older API answers 404, so the first
+// 404 latches the fallback and we stop asking; anything else is a real network
+// problem and is left to the caller.
+let haveSnapshot = true;
+async function liveRows() {
+  if (haveSnapshot) {
+    try {
+      const s = await get('/api/snapshot');
+      return { rows: s.units || [], aligned: s.aligned || null };
+    } catch (e) {
+      if (!/HTTP 404/.test(e.message)) throw e;
+      haveSnapshot = false;
+    }
+  }
+  return { rows: await get('/api/now'), aligned: null };
+}
+
 async function tick() {
-  let rows;
+  let rows, aligned;
   try {
-    rows = await get('/api/now');
+    ({ rows, aligned } = await liveRows());
   } catch (e) {
     $('status').textContent = 'connection lost — retrying';
     return;
@@ -303,6 +326,22 @@ async function tick() {
   if (rate && house != null) {
     $('heroCost').textContent =
       `≈ ${sym}${(house / 1000 * 24 * rate).toFixed(2)}/day at this rate · ${sym}${rate}/kWh`;
+  }
+
+  // How much of the house has no CT on it. Shown only when it is big enough to
+  // mean something: inside the noise band it is CT tolerance rather than a
+  // load, and a number that wanders either side of zero invites reading meaning
+  // into noise. Insights judges whether a large gap is persistent; this is just
+  // the live figure.
+  const unmet = $('heroUnmet');
+  const uw = aligned && typeof aligned.unmetered_w === 'number' ? aligned.unmetered_w : null;
+  const noiseHi = CFG.unmetered_noise_high_w != null ? CFG.unmetered_noise_high_w : 100;
+  if (uw != null && uw > noiseHi) {
+    unmet.innerHTML = `${esc(CFG.unmetered_label || 'Unmetered')}: <b>${fmtW(uw)}</b>` +
+      ` — on the mains but not on any CT`;
+    unmet.hidden = false;
+  } else {
+    unmet.hidden = true;
   }
 
   const peak = Math.max(1, ...chans.filter(c => c.role !== 'mains').map(c => wattOf(c) || 0));
