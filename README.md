@@ -252,6 +252,7 @@ Reference:
 | `tools/ecm_interval.py` | Set the packet send frequency |
 | `tools/verify_unit_identity.py` | Confirm each meter is the one you think it is |
 | `tools/test_dualport.py` | Full dual-meter test using pseudo-terminals — **no hardware needed** |
+| `tools/test_history_buckets.py` | Checks `/api/history` bucket averaging against a throwaway database — **no hardware needed** |
 | `tools/suggest_profiles.py` | Derive insight thresholds from your own data |
 | `tools/make_demo_data.py` | Generate a fake week for demos and screenshots |
 

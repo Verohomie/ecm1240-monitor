@@ -71,7 +71,7 @@ SNAP_MAX_SKEW_S = 20         # meters further apart than this: one is stalling
 
 app = Flask(__name__, static_folder=None)
 CFG = None                  # populated by main() / create_app()
-_HAS_DSECS = None           # probed once on first use; see has_dsecs()
+_HAS_DSECS = False          # latches True once the column appears; see has_dsecs()
 
 
 def _paths():
@@ -101,12 +101,21 @@ def has_dsecs():
     The API opens the database read-only, so it cannot add the column itself —
     the collector does that on its next restart. Between upgrading the code and
     restarting the collector, and for any database written by an older release,
-    the column is simply absent, and SQL naming it would fail. Checked once per
-    process (a column never disappears) and falls back to the plain average,
-    which is what the older store's equal-length readings meant anyway.
+    the column is simply absent, and SQL naming it would fail. Falls back to the
+    plain average, which is what the older store's equal-length readings meant
+    anyway.
+
+    Only a POSITIVE answer is cached. A column never disappears, so once it is
+    found the check can stop. A negative has to be re-asked, because the usual
+    upgrade order is install the new code, restart the API, restart the
+    collector — and it is the collector that adds the column. Caching that first
+    "no" would leave the API serving unweighted averages for as long as the
+    process runs, silently, with nothing on screen to say so. Re-probing is a
+    PRAGMA on an already-open connection, which is not a price worth paying that
+    failure mode for.
     """
     global _HAS_DSECS
-    if _HAS_DSECS is None:
+    if not _HAS_DSECS:
         _HAS_DSECS = any(r[1] == "dsecs"
                          for r in db().execute("PRAGMA table_info(readings)"))
     return _HAS_DSECS
@@ -494,7 +503,19 @@ def history():
         # it always did. The constant's VALUE only matters in the single bucket
         # that straddles the changeover, where it sets the blend between old and
         # new rows; a bucket either side is unaffected by it.
-        w = f"COALESCE(dsecs, {SNAP_DEFAULT_INTERVAL_S})"
+        #
+        # The weight is CAPPED, at the same ceiling the snapshot's spans use. A
+        # reading may legitimately cover a long interval: the collector stores
+        # any gap up to `guards.rebase_after_s` (120 s by default) before it
+        # resyncs instead, so the first reading after a serial hiccup or a
+        # collector restart can carry a minute and a half of energy. Weighted
+        # literally, that one reading outvotes eighteen ordinary ones and decides
+        # whatever bucket it lands in — even though the energy it stands for is
+        # spread across several buckets either side of it. Capping stops a
+        # gap-adjacent reading dominating a zoomed-in bucket. The old AVG() could
+        # not skew this way, so without the cap the weighting would be a
+        # regression on exactly the views a gap is most visible in.
+        w = f"MIN(COALESCE(dsecs, {SNAP_DEFAULT_INTERVAL_S}), {SNAP_MAX_INTERVAL_S})"
         value_expr = (f"SUM(({col}) * {w}) /"
                       f" NULLIF(SUM(CASE WHEN ({col}) IS NOT NULL THEN {w} END), 0)")
     unit = request.args.get("unit", 0, type=int)
