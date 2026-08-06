@@ -553,6 +553,34 @@ async function loadDetail() {
   }
 }
 
+/* Where the readings stop, and where they start again.
+
+   Two different things leave a hole in a series and both must draw as one.
+   The API buckets with GROUP BY, so a stretch with no rows produces no points
+   at all — a power cut, a crashed collector, an unplugged meter. Separately it
+   returns an explicit null for a bucket in which every sample was scrubbed as
+   dead (see the history endpoint: a meter that has lost its own supply reads
+   toward zero, and that is a dead meter, not a brownout). Those nulls are
+   dropped on the way in, which widens the spacing here — so testing the TIME
+   between surviving readings catches both without caring which happened.
+
+   "Normal spacing" is the MEDIAN gap, never the first one. Taking gaps[0] as
+   the bucket size lets a single outage at the start of a range redefine normal
+   for the whole range; the middle value cannot be dragged by a few big gaps. */
+const GAP_FACTOR = 2;            // a hole this many buckets wide breaks the line
+function splitRuns(pts) {
+  if (pts.length < 3) return pts.length ? [pts] : [];
+  const gaps = pts.slice(1).map((p, i) => p.ts - pts[i].ts).sort((a, b) => a - b);
+  const step = gaps[gaps.length >> 1];
+  if (!step) return [pts];
+  const runs = [[pts[0]]];
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i].ts - pts[i - 1].ts > step * GAP_FACTOR) runs.push([]);
+    runs[runs.length - 1].push(pts[i]);
+  }
+  return runs;
+}
+
 function draw() {
   const W = 900, H = 320, SH = 56;               // plot + strip heights
   const L = 66, R = 14, T = 14, B = 30, SGAP = 16;
@@ -587,18 +615,22 @@ function draw() {
   const x = t => L + (t - t0) / Math.max(t1 - t0, 1) * (W - L - R);
   const y = w => T + (1 - (w - lo) / Math.max(hi - lo, 1e-9)) * (H - T - B);
 
-  let line = '', area = '';
-  if (pts.length) {
-    pts.forEach((p, i) => {
-      line += (i ? 'L' : 'M') + x(p.ts).toFixed(1) + ',' + y(p.w).toFixed(1);
-    });
-    // Filling to the baseline says "this much of something". On a voltage axis
-    // the baseline is an arbitrary crop, so the fill would be shading nothing.
-    if (!isVolts) {
-      area = line + `L${x(pts[pts.length - 1].ts).toFixed(1)},${y(lo).toFixed(1)}` +
-                    `L${x(pts[0].ts).toFixed(1)},${y(lo).toFixed(1)}Z`;
-    }
-  }
+  /* One path per RUN of adjacent readings, not one path through everything.
+     A single path joins its last point to its next with a straight line, so a
+     recording gap gets drawn as a confident, dead-level trace across hours
+     nobody measured — on a voltage chart that reads as an unusually steady
+     supply, which is the exact opposite of a meter that stopped. */
+  const runs = splitRuns(pts);
+  const seg = run => run.map((p, i) =>
+    (i ? 'L' : 'M') + x(p.ts).toFixed(1) + ',' + y(p.w).toFixed(1)).join('');
+  const line = runs.map(seg).join('');
+  // Filling to the baseline says "this much of something". On a voltage axis
+  // the baseline is an arbitrary crop, so the fill would be shading nothing.
+  // Each run is closed on its own, so a gap is a gap in the fill too rather
+  // than one polygon stretched over the hole.
+  const area = isVolts ? '' : runs.map(run =>
+    seg(run) + `L${x(run[run.length - 1].ts).toFixed(1)},${y(lo).toFixed(1)}` +
+               `L${x(run[0].ts).toFixed(1)},${y(lo).toFixed(1)}Z`).join('');
 
   /* Shade what is OUT of range, not what is in it. Because the axis hugs the
      data, a healthy service fills the plot — tinting the in-range band would
@@ -645,11 +677,12 @@ function draw() {
       oLo = Math.min(...ov.map(p => p.w));
       if (oHi - oLo < 1) { oHi = oLo + 1; }
     }
-    let sp = '';
-    ov.forEach((p, i) => {
-      sp += (i ? 'L' : 'M') + sx(p.ts).toFixed(1) + ',' +
-            (sy + SH - ((p.w - oLo) / (oHi - oLo)) * (SH - 6)).toFixed(1);
-    });
+    // Broken across gaps for the same reason as the plot, and the navigator is
+    // where it matters most: a hole is what you drag the window onto to find
+    // out what happened, and it can only be aimed at if it is visible.
+    const sp = splitRuns(ov).map(run => run.map((p, i) =>
+      (i ? 'L' : 'M') + sx(p.ts).toFixed(1) + ',' +
+      (sy + SH - ((p.w - oLo) / (oHi - oLo)) * (SH - 6)).toFixed(1)).join('')).join('');
     strip = `<path d="${sp}" fill="none" stroke="var(--dim)" stroke-width="1.2" opacity="0.75"/>`;
   }
   const selX0 = sx(Math.max(t0, b0)), selX1 = sx(Math.min(t1, b1));
@@ -690,10 +723,18 @@ function updateChartMeta() {
   const { t0, t1 } = CH.view;
   const span = t1 - t0;
   const zoomed = Math.abs(span - (CH.base.t1 - CH.base.t0)) > 5;
-  $('zoomLbl').innerHTML = zoomed
+  // Say the silence out loud. The line breaks where the readings stop, but a
+  // break can be mistaken for a quiet patch in the wiggle — and when the hole
+  // runs right up to the edge of the range there is no break to see at all,
+  // just a chart that quietly begins late. Both are the same fact.
+  const holes = Math.max(0, splitRuns(CH.detail).length - 1);
+  const gapNote = holes
+    ? ` · <span style="color:var(--bad, #c0392b)">${holes} break${holes !== 1 ? 's' : ''}` +
+      ` where the meter stopped recording</span>` : '';
+  $('zoomLbl').innerHTML = (zoomed
     ? `Showing <b>${esc(fmtSpan(span))}</b> — ${esc(fmtTime(t0, span))} to ${esc(fmtTime(t1, span))}` +
       (CH.bucket ? ` · ${CH.bucket}s resolution` : '')
-    : (CH.bucket ? `${CH.bucket}s resolution` : '');
+    : (CH.bucket ? `${CH.bucket}s resolution` : '')) + gapNote;
   const rb = $('resetBtn');
   if (rb) rb.style.display = zoomed ? '' : 'none';
 
