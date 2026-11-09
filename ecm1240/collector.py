@@ -35,6 +35,7 @@ import argparse
 import json
 import os
 import queue
+import signal
 import socket
 import sqlite3
 import threading
@@ -176,9 +177,22 @@ class SqliteStore:
         self.discards = []
         self.quarantine = []
         self.lock = threading.Lock()
+        # A clean stop (SIGTERM from systemd, or Ctrl-C) sets _stop; the writer
+        # thread then flushes what it still holds, folds the WAL back into the
+        # database file and closes it, and sets _closed. Without this a stop
+        # simply killed the process: never corrupting (that is what WAL is
+        # for), but it threw away up to one flush interval of readings and left
+        # the WAL for the next start to replay.
+        self._stop = threading.Event()
+        self._closed = threading.Event()
         if not dry_run:
             os.makedirs(os.path.dirname(os.path.abspath(db_path)) or ".", exist_ok=True)
         threading.Thread(target=self._loop, daemon=True).start()
+
+    def close(self, timeout=15):
+        """Flush, checkpoint and close. True if the writer finished in time."""
+        self._stop.set()
+        return self._closed.wait(timeout)
 
     def _append(self, target, rec):
         with self.lock:
@@ -212,48 +226,61 @@ class SqliteStore:
             db.commit()
             log(f"sqlite store open: {self.db_path} "
                 f"(WAL, flush every {self.flush_interval}s)")
-        while True:
-            time.sleep(self.flush_interval)
+        while not self._stop.is_set():
+            self._stop.wait(self.flush_interval)
+            self._flush(db)
+        # Stopping: the flush above was the last one. Fold the WAL into the
+        # main file and close, so what is left is one finished database file.
+        try:
+            if db is not None:
+                db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                db.close()
+                log("sqlite store closed cleanly (WAL checkpointed)")
+        except sqlite3.Error as e:
+            log(f"sqlite close on stop failed ({e}); WAL left for the next start")
+        self._closed.set()
+
+    def _flush(self, db):
+        with self.lock:
+            batch, self.buf = self.buf, []
+            dbatch, self.discards = self.discards, []
+            qbatch, self.quarantine = self.quarantine, []
+        if not batch and not dbatch and not qbatch:
+            return
+        if self.dry_run:
+            if batch:
+                log(f"dry-run: would store {len(batch)} readings "
+                    f"(newest ts={batch[-1]['ts']})")
+            if dbatch:
+                log(f"dry-run: would store {len(dbatch)} discards")
+            if qbatch:
+                log(f"dry-run: would store {len(qbatch)} quarantined")
+            return
+        try:
+            if batch:
+                db.executemany(
+                    "INSERT OR REPLACE INTO readings"
+                    " (ts,unit_id,volts,ch1,ch2,aux1,aux2,aux3,aux4,aux5,dsecs)"
+                    " VALUES (:ts,:unit_id,:volts,:ch1,:ch2,:aux1,:aux2,:aux3,"
+                    ":aux4,:aux5,:dsecs)", batch)
+            if dbatch:
+                db.executemany(
+                    "INSERT INTO discards (ts,unit_id,reason,ch1_w,limit_w)"
+                    " VALUES (:ts,:unit_id,:reason,:ch1_w,:limit_w)", dbatch)
+            if qbatch:
+                db.executemany(
+                    "INSERT INTO quarantine"
+                    " (ts,unit_id,reason,volts,ch1,ch2,aux1,aux2,aux3,aux4,aux5,"
+                    "limit_w) VALUES (:ts,:unit_id,:reason,:volts,:ch1,:ch2,:aux1,"
+                    ":aux2,:aux3,:aux4,:aux5,:limit_w)", qbatch)
+            db.commit()
+        except sqlite3.Error as e:
+            log(f"sqlite write failed ({e}); re-buffering "
+                f"{len(batch)}+{len(dbatch)}+{len(qbatch)}")
             with self.lock:
-                batch, self.buf = self.buf, []
-                dbatch, self.discards = self.discards, []
-                qbatch, self.quarantine = self.quarantine, []
-            if not batch and not dbatch and not qbatch:
-                continue
-            if self.dry_run:
-                if batch:
-                    log(f"dry-run: would store {len(batch)} readings "
-                        f"(newest ts={batch[-1]['ts']})")
-                if dbatch:
-                    log(f"dry-run: would store {len(dbatch)} discards")
-                if qbatch:
-                    log(f"dry-run: would store {len(qbatch)} quarantined")
-                continue
-            try:
-                if batch:
-                    db.executemany(
-                        "INSERT OR REPLACE INTO readings"
-                        " (ts,unit_id,volts,ch1,ch2,aux1,aux2,aux3,aux4,aux5,dsecs)"
-                        " VALUES (:ts,:unit_id,:volts,:ch1,:ch2,:aux1,:aux2,:aux3,"
-                        ":aux4,:aux5,:dsecs)", batch)
-                if dbatch:
-                    db.executemany(
-                        "INSERT INTO discards (ts,unit_id,reason,ch1_w,limit_w)"
-                        " VALUES (:ts,:unit_id,:reason,:ch1_w,:limit_w)", dbatch)
-                if qbatch:
-                    db.executemany(
-                        "INSERT INTO quarantine"
-                        " (ts,unit_id,reason,volts,ch1,ch2,aux1,aux2,aux3,aux4,aux5,"
-                        "limit_w) VALUES (:ts,:unit_id,:reason,:volts,:ch1,:ch2,:aux1,"
-                        ":aux2,:aux3,:aux4,:aux5,:limit_w)", qbatch)
-                db.commit()
-            except sqlite3.Error as e:
-                log(f"sqlite write failed ({e}); re-buffering "
-                    f"{len(batch)}+{len(dbatch)}+{len(qbatch)}")
-                with self.lock:
-                    self.buf = batch + self.buf
-                    self.discards = dbatch + self.discards
-                    self.quarantine = qbatch + self.quarantine
+                self.buf = batch + self.buf
+                self.discards = dbatch + self.discards
+                self.quarantine = qbatch + self.quarantine
 
 
 # ── Byte sources ──────────────────────────────────────────────────────────────
@@ -398,8 +425,18 @@ def main():
         threading.Thread(target=pump, args=(label, unit, src, q, counts),
                          daemon=True).start()
 
-    while True:
-        unit_override, packet = q.get()
+    # SIGTERM (systemctl stop/restart) and Ctrl-C end the loop below, so the
+    # store can flush and close cleanly instead of the process dying with
+    # readings still in memory and the WAL open.
+    stopping = threading.Event()
+    signal.signal(signal.SIGTERM, lambda *_: stopping.set())
+    signal.signal(signal.SIGINT, lambda *_: stopping.set())
+
+    while not stopping.is_set():
+        try:
+            unit_override, packet = q.get(timeout=1)
+        except queue.Empty:
+            continue
         d = parse_payload(packet[3:])
         # The port wins over the packet: every ECM-1240 ships unit_id=0.
         unit = unit_override if unit_override is not None else d["unit_id"]
@@ -514,6 +551,10 @@ def main():
         store.add(reading)
         log(f"unit {unit}: {d['volts']:.1f}V  " +
             " ".join(f"{ch}={w[ch]:.0f}W" for ch in CHANNELS))
+
+    log("stopping: flushing and closing the database")
+    if not store.close():
+        log("database writer did not finish within 15 s; exiting anyway")
 
 
 if __name__ == "__main__":
